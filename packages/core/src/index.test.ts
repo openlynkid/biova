@@ -54,6 +54,8 @@ describe("public page read model", () => {
     await services.products.setStatus(creatorId, archived.value.id, "archived");
 
     const page = await getPublicPage(services, "coreuser");
-    expect(page?.products).toEqual([{ slug: "core-live", title: "Live", description: null, priceIdr: 25_000 }]);
+    expect(page?.products).toEqual([
+      { id: live.value.id, slug: "core-live", title: "Live", description: null, priceIdr: 25_000 },
+    ]);
   });
 });

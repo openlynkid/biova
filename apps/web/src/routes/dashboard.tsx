@@ -140,7 +140,7 @@ function Onboarding() {
 
 function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeof getDashboard>>>; email: string }) {
   const router = useRouter();
-  const { creator, page, links, products, orders } = data;
+  const { creator, page, links, products, orders, analytics } = data;
   const published = page?.status === "published";
   const [error, setError] = useState<string | null>(null);
 
@@ -172,6 +172,7 @@ function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeo
       </section>
 
       <ProfileForm creator={creator} onSave={(payload) => run(async () => updateProfile({ data: payload }))} />
+      <AnalyticsPanel analytics={analytics} />
       <PageForm page={page} onSave={(payload) => run(async () => updatePage({ data: payload }))} />
       <LinksEditor links={links} onError={setError} />
       <ProductsEditor products={products} onError={setError} />
@@ -386,6 +387,73 @@ function OrdersPanel({ orders }: { orders: OrderRow[] }) {
         ))}
       </ul>
       {orders.length === 0 ? <p className="intro">No orders yet. Share your page to make your first sale.</p> : null}
+    </section>
+  );
+}
+
+type AnalyticsRow = {
+  range: string;
+  pageViews: number;
+  uniqueVisitors: number;
+  linkClicks: number;
+  clickThroughRate: number;
+  productViews: number;
+  links: { linkId: string; title: string; clicks: number }[];
+  products: { productId: string; title: string; views: number }[];
+};
+
+const RANGE_LABELS: Record<string, string> = { "7d": "7 days", "30d": "30 days", "90d": "90 days" };
+
+function AnalyticsPanel({ analytics }: { analytics: AnalyticsRow }) {
+  const rangeLabel = RANGE_LABELS[analytics.range] ?? analytics.range;
+  // Only rows with activity are shown, busiest first.
+  const topLinks = [...analytics.links].filter((link) => link.clicks > 0).sort((a, b) => b.clicks - a.clicks);
+  const topProducts = [...analytics.products].filter((product) => product.views > 0).sort((a, b) => b.views - a.views);
+
+  return (
+    <section className="panel">
+      <div className="eyebrow">ANALYTICS ({rangeLabel.toUpperCase()})</div>
+      <div className="stat-row">
+        <div className="stat"><span className="stat-label">PAGE VIEWS</span><strong>{analytics.pageViews}</strong></div>
+        <div className="stat"><span className="stat-label">VISITORS</span><strong>{analytics.uniqueVisitors}</strong></div>
+        <div className="stat"><span className="stat-label">LINK CLICKS</span><strong>{analytics.linkClicks}</strong></div>
+        <div className="stat"><span className="stat-label">CTR</span><strong>{analytics.clickThroughRate}%</strong></div>
+        <div className="stat"><span className="stat-label">PRODUCT VIEWS</span><strong>{analytics.productViews}</strong></div>
+      </div>
+
+      {topLinks.length > 0 ? (
+        <>
+          <div className="section-heading"><div className="eyebrow">TOP LINKS</div><span className="count">{topLinks.length} LINK</span></div>
+          <ul className="rows">
+            {topLinks.map((link) => (
+              <li className="row" key={link.linkId}>
+                <span className="row-icon">↗</span>
+                <div className="row-body"><strong>{link.title}</strong></div>
+                <span className="product-price">{link.clicks}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {topProducts.length > 0 ? (
+        <>
+          <div className="section-heading"><div className="eyebrow">TOP PRODUCTS</div><span className="count">{topProducts.length} ITEM</span></div>
+          <ul className="rows">
+            {topProducts.map((product) => (
+              <li className="row" key={product.productId}>
+                <span className="row-icon">◍</span>
+                <div className="row-body"><strong>{product.title}</strong></div>
+                <span className="product-price">{product.views}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {analytics.pageViews === 0 ? (
+        <p className="intro">No traffic in the last {rangeLabel}. Share your page to start collecting stats.</p>
+      ) : null}
     </section>
   );
 }

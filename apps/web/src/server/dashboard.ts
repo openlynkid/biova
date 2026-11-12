@@ -19,6 +19,7 @@ import {
   productDescriptionSchema,
   productPriceSchema,
   formatBytes,
+  type AnalyticsRange,
   type AssetView,
   type PageTheme,
 } from "@biova/shared";
@@ -67,6 +68,19 @@ export interface OrderView {
   items: { title: string; unitPriceIdr: number }[];
 }
 
+export interface AnalyticsView {
+  range: AnalyticsRange;
+  pageViews: number;
+  uniqueVisitors: number;
+  linkClicks: number;
+  clickThroughRate: number;
+  productViews: number;
+  orders: number;
+  revenueIdr: number;
+  links: { linkId: string; title: string; clicks: number }[];
+  products: { productId: string; title: string; views: number }[];
+}
+
 export interface DashboardData {
   creator: {
     id: string;
@@ -78,6 +92,7 @@ export interface DashboardData {
   links: { id: string; title: string; url: string; description: string | null; icon: string | null; enabled: boolean }[];
   products: ProductView[];
   orders: OrderView[];
+  analytics: AnalyticsView;
 }
 
 // The dashboard loader: one round trip for creator, page and links.
@@ -92,6 +107,7 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
   const links = await services.links.list(creator.id);
   const products = await services.products.list(creator.id);
   const orders = await services.orders.listByCreator(creator.id);
+  const analytics = await services.analytics.summary(creator.id, "30d");
 
   return {
     creator: { id: creator.id, slug: creator.slug, displayName: creator.displayName, bio: creator.bio },
@@ -108,6 +124,7 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
       createdAt: order.createdAt.toISOString(),
       items: items.map((item) => ({ title: item.title, unitPriceIdr: item.unitPriceIdr })),
     })),
+    analytics,
   };
 });
 

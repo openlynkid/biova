@@ -229,3 +229,50 @@ export const pageBlocks = pgTable("page_blocks", {
   enabled: boolean("enabled").notNull().default(true),
   ...timestamps(),
 }, (table) => [index("page_blocks_page_sort_idx").on(table.pageId, table.sortOrder)]);
+
+// Raw analytics events. PRD 4.7 keeps raw events separate from aggregate
+// metrics: these rows are the append-only record, and the dashboard summary is
+// computed from them on read, so a metric can never be double counted by two
+// writers touching the same counter.
+//
+// Each row stores a random `visitor_id` rather than an IP or a user agent, so a
+// visitor can be counted uniquely without the event table becoming a store of
+// personal data. The id is minted by the public page and kept only in the
+// browser's local storage.
+export const pageViewEvents = pgTable("page_view_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id, { onDelete: "cascade" }),
+  visitorId: varchar("visitor_id", { length: 64 }).notNull(),
+  path: varchar("path", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("page_view_events_creator_created_idx").on(table.creatorId, table.createdAt),
+  index("page_view_events_creator_visitor_idx").on(table.creatorId, table.visitorId),
+]);
+
+// A click on a link on the public page. The link id is kept for per-link
+// breakdowns; the row cascades away with the link so a deleted link does not
+// leave clicks pointing at nothing.
+export const linkClickEvents = pgTable("link_click_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id, { onDelete: "cascade" }),
+  linkId: uuid("link_id").notNull().references(() => links.id, { onDelete: "cascade" }),
+  visitorId: varchar("visitor_id", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("link_click_events_creator_created_idx").on(table.creatorId, table.createdAt),
+  index("link_click_events_link_idx").on(table.linkId),
+]);
+
+// A view of a product card on the public page. Product views feed the
+// conversion read (views against orders) in the dashboard.
+export const productViewEvents = pgTable("product_view_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id, { onDelete: "cascade" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  visitorId: varchar("visitor_id", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("product_view_events_creator_created_idx").on(table.creatorId, table.createdAt),
+  index("product_view_events_product_idx").on(table.productId),
+]);

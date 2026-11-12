@@ -4,6 +4,7 @@ export * from "./links";
 export * from "./product";
 export * from "./order";
 export * from "./asset";
+export * from "./analytics";
 export * from "./result";
 export * from "./rate-limit";
 export * from "./env";

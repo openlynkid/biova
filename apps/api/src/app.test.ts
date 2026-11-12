@@ -177,8 +177,8 @@ describe("biova api", () => {
     expect(published.status).toBe(200);
 
     const afterPublish = await request("/v1/public/alice");
-    expect(((await afterPublish.json()) as { products: { slug: string; title: string; description: string | null; priceIdr: number }[] }).products).toEqual([
-      { slug: "ebook", title: "E-book", description: null, priceIdr: 49_000 },
+    expect(((await afterPublish.json()) as { products: { id: string; slug: string; title: string; description: string | null; priceIdr: number }[] }).products).toEqual([
+      { id: product.id, slug: "ebook", title: "E-book", description: null, priceIdr: 49_000 },
     ]);
   });
 
@@ -327,6 +327,79 @@ describe("biova api", () => {
   test("an unknown order reference returns 404 to the buyer", async () => {
     const response = await request("/v1/orders/NOPE000000");
     expect(response.status).toBe(404);
+  });
+
+  test("public page view events are recorded and summarized for the creator", async () => {
+    const linkId = ((await (await request("/v1/links", {}, aliceId)).json()) as { links: { id: string }[] }).links[0].id;
+
+    const view = await request("/v1/public/alice/events", {
+      method: "POST",
+      body: JSON.stringify({ type: "page_view", visitorId: "visitor-abc123", path: "/alice" }),
+    });
+    expect(view.status).toBe(202);
+    expect(await view.json()).toEqual({ recorded: true });
+
+    const click = await request("/v1/public/alice/events", {
+      method: "POST",
+      body: JSON.stringify({ type: "link_click", visitorId: "visitor-abc123", linkId }),
+    });
+    expect(click.status).toBe(202);
+
+    const summary = await request("/v1/analytics/summary?range=30d", {}, aliceId);
+    expect(summary.status).toBe(200);
+    const { summary: metrics } = (await summary.json()) as {
+      summary: { pageViews: number; uniqueVisitors: number; linkClicks: number; clickThroughRate: number; revenueIdr: number; orders: number };
+    };
+    expect(metrics.pageViews).toBe(1);
+    expect(metrics.uniqueVisitors).toBe(1);
+    expect(metrics.linkClicks).toBe(1);
+    expect(metrics.clickThroughRate).toBe(100);
+    // The paid order from the earlier checkout test shows up in the range.
+    expect(metrics.orders).toBe(1);
+    expect(metrics.revenueIdr).toBe(49_000);
+  });
+
+  test("analytics ingest rejects unknown creators, foreign links and bad input", async () => {
+    const unknownCreator = await request("/v1/public/nobody/events", {
+      method: "POST",
+      body: JSON.stringify({ type: "page_view", visitorId: "visitor-abc123" }),
+    });
+    expect(unknownCreator.status).toBe(404);
+
+    // bob's page is still a draft, so it is not a valid ingest target.
+    const draftPage = await request("/v1/public/bob/events", {
+      method: "POST",
+      body: JSON.stringify({ type: "page_view", visitorId: "visitor-abc123" }),
+    });
+    expect(draftPage.status).toBe(404);
+
+    const foreignLink = await request("/v1/public/alice/events", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "link_click",
+        visitorId: "visitor-abc123",
+        linkId: "00000000-0000-0000-0000-000000000000",
+      }),
+    });
+    expect(foreignLink.status).toBe(404);
+
+    const badType = await request("/v1/public/alice/events", {
+      method: "POST",
+      body: JSON.stringify({ type: "purchase", visitorId: "visitor-abc123" }),
+    });
+    expect(badType.status).toBe(422);
+  });
+
+  test("analytics summary is private and validates its range", async () => {
+    expect((await request("/v1/analytics/summary")).status).toBe(401);
+    expect((await request("/v1/analytics/summary?range=all", {}, aliceId)).status).toBe(422);
+
+    // Bob has a creator profile but none of the events belong to him, so his
+    // summary is all zeros rather than a leak of Alice's metrics.
+    const bob = await request("/v1/analytics/summary", {}, bobId);
+    expect(bob.status).toBe(200);
+    const { summary } = (await bob.json()) as { summary: { pageViews: number; linkClicks: number; revenueIdr: number } };
+    expect(summary).toMatchObject({ pageViews: 0, linkClicks: 0, revenueIdr: 0 });
   });
 
   test("unknown errors do not leak internals", async () => {

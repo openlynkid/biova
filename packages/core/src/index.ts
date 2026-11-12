@@ -20,6 +20,7 @@ import {
 import { createOrderRepository, createOrderService, type OrderService } from "@biova/orders";
 import { createFakeProvider, createMidtransProvider, type PaymentProvider } from "@biova/payments";
 import { createDeliveryService, type DeliveryService } from "@biova/delivery";
+import { createAnalyticsRepository, createAnalyticsService, type AnalyticsService } from "@biova/analytics";
 import { createLocalStorage, type BlobStorage } from "@biova/storage";
 import { DOWNLOAD_TOKEN_TTL_SECONDS, MAX_ASSET_BYTES, pageThemeSchema, readEnv, type PageTheme } from "@biova/shared";
 
@@ -31,6 +32,7 @@ export interface BiovaServices {
   assets: AssetService;
   orders: OrderService;
   delivery: DeliveryService;
+  analytics: AnalyticsService;
 }
 
 // Pick the payment provider from the environment. Midtrans is used when a
@@ -147,10 +149,42 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
     },
   );
 
-  return { creators, pages, links, products, assets, orders, delivery };
+  // Analytics reads links, products and paid-order totals through injected
+  // functions, so the domain owns only its event tables and never imports the
+  // domains it reports on.
+  const analytics = createAnalyticsService(
+    createAnalyticsRepository(db),
+    {
+      async listLinks(creatorId) {
+        const rows = await links.list(creatorId);
+        return rows.map(({ id, title }) => ({ id, title }));
+      },
+      async listProducts(creatorId) {
+        const rows = await products.list(creatorId);
+        return rows.map(({ id, title }) => ({ id, title }));
+      },
+      paidOrders: (creatorId, since) => orders.paidTotalsSince(creatorId, since),
+    },
+  );
+
+  return { creators, pages, links, products, assets, orders, delivery, analytics };
+}
+
+// Resolves the creator behind a published public page. Analytics ingest needs
+// the creator id but must never trust one from the client, so both the API route
+// and the web server function go through here.
+export async function resolvePublishedCreatorId(services: BiovaServices, slug: string): Promise<string | undefined> {
+  const creator = await services.creators.getBySlug(slug);
+  if (!creator) return undefined;
+  const page = await services.pages.getByCreatorId(creator.id);
+  if (!page || page.status !== "published") return undefined;
+  return creator.id;
 }
 
 export interface PublicProduct {
+  // Exposed so the public page can report a product_view event against the
+  // right row; it is a random uuid and reveals nothing about the product.
+  id: string;
   slug: string;
   title: string;
   description: string | null;
@@ -187,6 +221,6 @@ export async function getPublicPage(services: BiovaServices, slug: string): Prom
     links: links
       .filter((link) => link.enabled)
       .map(({ id, title, url, description, icon }) => ({ id, title, url, description, icon })),
-    products: products.map(({ slug, title, description, priceIdr }) => ({ slug, title, description, priceIdr })),
+    products: products.map(({ id, slug, title, description, priceIdr }) => ({ id, slug, title, description, priceIdr })),
   };
 }

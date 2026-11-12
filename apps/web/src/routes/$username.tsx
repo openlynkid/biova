@@ -1,6 +1,8 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { formatPriceIdr } from "@biova/shared/product";
 import { getPublicPage } from "../server/public-page";
+import { trackEvent } from "../tracking";
 
 export const Route = createFileRoute("/$username")({
   loader: async ({ params }) => {
@@ -36,6 +38,13 @@ function themeStyle(theme: { accent?: string; background?: string; textColor?: s
 function PublicPage() {
   const { creator, page, links, products } = Route.useLoaderData();
   const theme = page.theme ?? {};
+
+  // One page_view per mount, reported once for the visitor's browser. The hook
+  // depends only on the slug, so client-side navigation between creators counts
+  // each page but a re-render does not double count.
+  useEffect(() => {
+    trackEvent({ slug: creator.slug, type: "page_view", path: window.location.pathname });
+  }, [creator.slug]);
   // Theme values are validated hex colours, so they are safe to inline.
   const themed = Boolean(theme.accent || theme.background || theme.textColor);
   const buttonClass = theme.buttonStyle ? `buttons-${theme.buttonStyle}` : "";
@@ -58,6 +67,7 @@ function PublicPage() {
             target="_blank"
             // Untrusted destination: never pass referrer or window.opener.
             rel="noopener noreferrer nofollow"
+            onClick={() => trackEvent({ slug: creator.slug, type: "link_click", linkId: link.id })}
           >
             <span className="link-icon" aria-hidden="true">{link.icon ?? "↗"}</span>
             <span>
@@ -76,6 +86,7 @@ function PublicPage() {
               className="product-card"
               to="/checkout/$username/$productSlug"
               params={{ username: creator.slug, productSlug: product.slug }}
+              onClick={() => trackEvent({ slug: creator.slug, type: "product_view", productId: product.id })}
             >
               <div className="product-body">
                 <strong>{product.title}</strong>

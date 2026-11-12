@@ -166,6 +166,25 @@ Deleting a product or a creator cascades the asset rows but leaves the uploaded
 bytes in the store. `bun run storage:sweep` reconciles the two and lists what
 nothing references; add `--delete` to remove those files.
 
+## Analytics
+
+The public page reports three events from the browser: a `page_view` on load, a
+`link_click` when a link is tapped and a `product_view` when a product is opened.
+The visitor id is a random token kept in local storage; no IP or account id is
+stored, so nothing points at a person. Reports are fire-and-forget and never
+block or break the page.
+
+Events are written through `POST /v1/public/:slug/events`, which resolves the
+creator from the published slug rather than trusting a client-supplied id, and
+rejects a click or product view whose target belongs to someone else. The
+dashboard reads `GET /v1/analytics/summary?range=30d` (session-scoped) for page
+views, unique visitors, clicks, click-through rate, product views, and the paid
+order count and revenue for the range.
+
+Every number is derived from the raw event rows at read time; nothing is a stored
+counter, so a summary always agrees with the rows it comes from. See
+`docs/adr/0010-page-analytics.md`.
+
 ## Plugin model
 
 1. Build-time registration: import approved plugin packages in `apps/web/src/plugins.ts`.

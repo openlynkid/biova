@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import {
   orderItems,
   orders,
@@ -61,6 +61,9 @@ export interface OrderRepository {
   findById(id: string): Promise<Order | undefined>;
   listItems(orderId: string): Promise<OrderItem[]>;
   listByCreator(creatorId: string): Promise<Order[]>;
+  // Paid orders since a date, for the analytics revenue read. Counts only
+  // orders that are actually paid, so a refunded order drops out.
+  paidTotalsSince(creatorId: string, since: Date): Promise<{ count: number; revenueIdr: number }>;
   recordWebhookEvent(args: { provider: string; eventId: string; eventType: string; payload: Record<string, unknown> }): Promise<boolean>;
   upsertPaymentTransaction(args: {
     orderId: string;
@@ -135,6 +138,14 @@ export function createOrderRepository(db: Database): OrderRepository {
 
     listByCreator(creatorId) {
       return db.select().from(orders).where(eq(orders.creatorId, creatorId)).orderBy(desc(orders.createdAt));
+    },
+
+    async paidTotalsSince(creatorId, since) {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)::int`, revenueIdr: sql<number>`coalesce(sum(${orders.totalIdr}), 0)::int` })
+        .from(orders)
+        .where(and(eq(orders.creatorId, creatorId), eq(orders.status, "paid"), gte(orders.createdAt, since)));
+      return { count: row?.count ?? 0, revenueIdr: row?.revenueIdr ?? 0 };
     },
 
     async recordWebhookEvent(args) {
@@ -235,6 +246,9 @@ export interface OrderService {
   checkout(input: { creatorSlug: string; productSlug: string; buyerName: string; buyerEmail: string; buyerPhone?: string | null }): Promise<Result<CheckoutResult, OrderError>>;
   getByReference(reference: string): Promise<OrderWithItems | undefined>;
   listByCreator(creatorId: string): Promise<OrderWithItems[]>;
+  // Paid totals since a date, read by the analytics domain through an injected
+  // function so analytics never imports orders.
+  paidTotalsSince(creatorId: string, since: Date): Promise<{ count: number; revenueIdr: number }>;
   listEntitlementsByEmail(email: string): Promise<ProductEntitlement[]>;
   // Verifies and applies a provider webhook. The provider is trusted to have
   // validated its own signature; everything else (amount, currency, order state)
@@ -324,6 +338,10 @@ export function createOrderService(repository: OrderRepository, deps: OrderDeps,
 
     listEntitlementsByEmail(email) {
       return repository.listEntitlementsByEmail(email);
+    },
+
+    paidTotalsSince(creatorId, since) {
+      return repository.paidTotalsSince(creatorId, since);
     },
 
     async handleWebhook(payload) {

@@ -12,6 +12,7 @@
     "@biova/auth": "workspace:*",
     "@biova/core": "workspace:*",
     "@biova/creator": "workspace:*",
+    "@biova/analytics": "workspace:*",
     "@biova/database": "workspace:*",
     "@biova/links": "workspace:*",
     "@biova/orders": "workspace:*",

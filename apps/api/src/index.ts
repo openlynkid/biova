@@ -28,6 +28,8 @@ export const app = createApp({
   rateLimiter: createRateLimiter({ windowMs: 60_000, max: 120 }),
   // Webhooks have no session, so they get their own per-address budget.
   webhookRateLimiter: createRateLimiter({ windowMs: 60_000, max: 240 }),
+  // Public analytics ingest is unauthenticated; cap it per address.
+  analyticsRateLimiter: createRateLimiter({ windowMs: 60_000, max: 300 }),
 });
 
 if (import.meta.main) {

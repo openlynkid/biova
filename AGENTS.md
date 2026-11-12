@@ -24,12 +24,13 @@ shape day-to-day decisions:
   4 Growth and analytics, 5 Plugin ecosystem. Current state: Phase 1 complete
   (auth foundation, database schema). Phase 2 complete: creator, page and links
   domains, the public page route and the creator dashboard are implemented.
-  Phase 3 in progress: the products domain (digital product CRUD, catalog on the
-  public page, `/v1/products` routes) is implemented; checkout, Midtrans and
-  asset storage are next.
-- Domain boundaries to build next: orders, payments, analytics, media. Each
-  domain owns its tables, repositories and service APIs, and exposes a public
-  interface (ADR-0002, ADR-0004). Creator, page, links and products are done.
+  Phase 3 complete: products, checkout, Midtrans, asset storage and delivery are
+  implemented. Phase 4 in progress: page analytics (events, summary, dashboard
+  panel) is implemented; more growth features are next.
+- Domain boundaries to build next: growth and media. Each domain owns its tables,
+  repositories and service APIs, and exposes a public interface (ADR-0002,
+  ADR-0004). Creator, page, links, products, orders, payments, delivery and
+  analytics are done.
 - Payments use Midtrans. Payment status may only change from a verified server
   webhook, and webhooks must be idempotent.
 - Paid files must never be reachable by public URL or by client-asserted
@@ -159,6 +160,11 @@ a build step that requires `DATABASE_URL`.
   buyer delivery read model. Reaches orders and products through injected
   functions, so it imports neither domain. Download checks: token signature and
   expiry, entitlement active, asset belongs to the granted product.
+- `packages/analytics`: page analytics. Owns `page_view_events`,
+  `link_click_events` and `product_view_events` (raw, append-only). Every number
+  in the dashboard summary is computed on read from those rows; links, product
+  titles and paid-order totals arrive through injected functions, so it imports
+  no other domain.
 - `packages/payments`: `PaymentProvider` abstraction with a Midtrans adapter
   (sha512 signature verification) and a fake provider for tests and local
   development. `core` picks the provider from the environment.

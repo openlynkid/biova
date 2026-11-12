@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
-import { getPublicPage, type BiovaServices } from "@biova/core";
-import type { RateLimiter } from "@biova/shared";
+import { getPublicPage, resolvePublishedCreatorId, type BiovaServices } from "@biova/core";
+import { analyticsRangeSchema, type RateLimiter } from "@biova/shared";
 
 export interface SessionUser {
   id: string;
@@ -15,6 +15,9 @@ export interface AppDeps {
   // Webhook deliveries carry no session, so the per-user limiter never sees
   // them; this separate limiter caps them per client address instead.
   webhookRateLimiter?: RateLimiter;
+  // Public analytics ingest has no session either; this caps event writes per
+  // client address so the public endpoint cannot be used to flood the tables.
+  analyticsRateLimiter?: RateLimiter;
 }
 
 // Domain error codes are stable strings; map them to HTTP statuses once here so
@@ -520,6 +523,56 @@ export function createApp(deps: AppDeps) {
       // Gateways retry on any non-2xx, so a duplicate or ignored delivery is
       // still acknowledged as accepted.
       return { outcome: result.value.outcome };
+    })
+
+    // Public analytics ingest. No session: the visitor is anonymous by design.
+    // The creator is resolved from the published slug, so a caller cannot write
+    // events against an arbitrary creator id, and the per-address limiter caps
+    // how fast a client can write. The service rejects an event whose link or
+    // product does not belong to that creator.
+    .post("/v1/public/:slug/events", async ({ request, params, body, set }) => {
+      if (deps.analyticsRateLimiter) {
+        const address = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+        const limited = deps.analyticsRateLimiter.consume(`analytics:${address}`);
+        if (!limited.allowed) {
+          set.status = 429;
+          set.headers["retry-after"] = String(Math.ceil(limited.retryAfterMs / 1000));
+          return { error: "rate_limited" };
+        }
+      }
+      const services = await deps.getServices();
+      const creatorId = await resolvePublishedCreatorId(services, params.slug);
+      if (!creatorId) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+      const result = await services.analytics.track({
+        creatorId,
+        type: String(payload.type ?? ""),
+        visitorId: String(payload.visitorId ?? ""),
+        path: payload.path === undefined ? undefined : String(payload.path),
+        linkId: payload.linkId === undefined ? undefined : String(payload.linkId),
+        productId: payload.productId === undefined ? undefined : String(payload.productId),
+      });
+      if (!result.ok) return errorResponse(set, result.error);
+      set.status = 202;
+      return { recorded: true };
+    })
+
+    // Creator analytics summary. Session-scoped: a creator only ever reads their
+    // own metrics, and the range is validated by the shared schema.
+    .get("/v1/analytics/summary", async ({ request, query, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const range = analyticsRangeSchema.safeParse((query as { range?: unknown }).range ?? "30d");
+      if (!range.success) return errorResponse(set, "invalid_input");
+      const summary = await auth.services.analytics.summary(auth.creator.id, range.data);
+      return { summary };
     })
 
     // Public read model. No session required; only published pages are returned.
