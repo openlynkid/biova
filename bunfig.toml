@@ -1,0 +1,7 @@
+[install]
+# Keep installs reproducible and avoid silently accepting peer dependency issues.
+auto = "fallback"
+exact = true
+
+[run]
+shell = "bun"

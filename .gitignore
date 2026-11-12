@@ -1,39 +1,16 @@
-# Dependencies
-node_modules/
-.pnp
-.pnp.js
-
-# Build output
-dist/
-build/
-out/
-.next/
-.turbo/
-
-# Environment
+node_modules
+.turbo
+.output
+dist
+build
+coverage
 .env
 .env.*
 !.env.example
-
-# Logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Editor / OS
 .DS_Store
-.idea/
-.vscode/
-*.swp
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-
-# Misc
-coverage/
-.agents_tmp/
+.agents_tmp
+.idea
+.vscode
+__pycache__
+.venv

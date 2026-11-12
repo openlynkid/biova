@@ -1,0 +1,1 @@
+{ "name": "@openlynk/config-ts", "private": true, "type": "module", "exports": { "./base": "./base.json" } }

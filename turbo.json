@@ -1,0 +1,13 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [".env", ".env.*"],
+  "globalEnv": ["NODE_ENV", "DATABASE_URL", "APP_URL", "API_URL"],
+  "tasks": {
+    "dev": { "cache": false, "persistent": true },
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".output/**", "build/**"] },
+    "typecheck": { "dependsOn": ["^typecheck"], "outputs": [] },
+    "check": { "dependsOn": ["^check"], "outputs": [] },
+    "test": { "dependsOn": ["^build"], "outputs": ["coverage/**"] },
+    "clean": { "cache": false }
+  }
+}

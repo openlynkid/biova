@@ -1,0 +1,1 @@
+{ "name": "@openlynk/plugin-social-links", "version": "0.1.0", "private": true, "type": "module", "exports": { ".": "./src/index.tsx" }, "dependencies": { "@openlynk/plugin-sdk": "workspace:*", "react": "19.3.0" }, "scripts": { "typecheck": "tsc --noEmit" }, "devDependencies": { "typescript": "5.9.3", "@types/react": "^19.2.7" } }
