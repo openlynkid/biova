@@ -54,6 +54,17 @@ export interface ProductView {
   status: string;
 }
 
+export interface OrderView {
+  reference: string;
+  status: string;
+  totalIdr: number;
+  currency: string;
+  buyerName: string;
+  buyerEmail: string;
+  createdAt: string;
+  items: { title: string; unitPriceIdr: number }[];
+}
+
 export interface DashboardData {
   creator: {
     id: string;
@@ -64,6 +75,7 @@ export interface DashboardData {
   page: { title: string; status: string; theme: PageTheme } | null;
   links: { id: string; title: string; url: string; description: string | null; icon: string | null; enabled: boolean }[];
   products: ProductView[];
+  orders: OrderView[];
 }
 
 // The dashboard loader: one round trip for creator, page and links.
@@ -77,12 +89,23 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
   const page = await services.pages.ensurePage(creator.id);
   const links = await services.links.list(creator.id);
   const products = await services.products.list(creator.id);
+  const orders = await services.orders.listByCreator(creator.id);
 
   return {
     creator: { id: creator.id, slug: creator.slug, displayName: creator.displayName, bio: creator.bio },
     page: { title: page.title, status: page.status, theme: pageThemeSchema.safeParse(page.theme).data ?? {} },
     links: links.map(({ id, title, url, description, icon, enabled }) => ({ id, title, url, description, icon, enabled })),
     products: products.map(toProductView),
+    orders: orders.map(({ order, items }) => ({
+      reference: order.reference,
+      status: order.status,
+      totalIdr: order.totalIdr,
+      currency: order.currency,
+      buyerName: order.buyerName,
+      buyerEmail: order.buyerEmail,
+      createdAt: order.createdAt.toISOString(),
+      items: items.map((item) => ({ title: item.title, unitPriceIdr: item.unitPriceIdr })),
+    })),
   };
 });
 

@@ -56,3 +56,14 @@
 .themed .product-card{border-color:color-mix(in srgb,var(--page-text) 18%,transparent)}
 .themed .product-price{color:var(--page-accent)}
 .themed .product-body small{color:color-mix(in srgb,var(--page-text) 62%,transparent)}
+
+/* Checkout and orders */
+.order-summary{display:flex;flex-direction:column;gap:10px;max-width:520px;margin:6px 0 22px;padding:16px 18px;border:1px solid #292b34;border-radius:11px;background:#111318}
+.order-line{display:flex;justify-content:space-between;font-size:13px;color:#9b9eaa}
+.order-line.total{color:#f4f4f5;font-weight:680;font-size:15px;border-top:1px solid #24262d;padding-top:10px;margin-top:2px}
+.stat-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 0;max-width:760px}
+.stat{border:1px solid #292b34;border-radius:10px;background:#111318;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.stat-label{font-size:10px;letter-spacing:1.4px;color:#8f929e}
+.stat strong{font-size:20px;font-weight:720;letter-spacing:-.6px}
+.access-panel{margin-top:20px;padding:18px;border:1px solid #2b3a33;border-radius:11px;background:#0f1713;max-width:520px}
+.access-panel strong{display:block;font-size:14px;margin-bottom:6px}

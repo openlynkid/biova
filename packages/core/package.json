@@ -14,6 +14,8 @@
     "@biova/creator": "workspace:*",
     "@biova/database": "workspace:*",
     "@biova/links": "workspace:*",
+    "@biova/orders": "workspace:*",
+    "@biova/payments": "workspace:*",
     "@biova/page": "workspace:*",
     "@biova/products": "workspace:*",
     "@biova/shared": "workspace:*"

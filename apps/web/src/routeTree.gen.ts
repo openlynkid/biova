@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UsernameRouteImport } from './routes/$username'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as OrderReferenceRouteImport } from './routes/order.$reference'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as CheckoutUsernameProductSlugRouteImport } from './routes/checkout.$username.$productSlug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -29,44 +31,82 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrderReferenceRoute = OrderReferenceRouteImport.update({
+  id: '/order/$reference',
+  path: '/order/$reference',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CheckoutUsernameProductSlugRoute =
+  CheckoutUsernameProductSlugRouteImport.update({
+    id: '/checkout/$username/$productSlug',
+    path: '/checkout/$username/$productSlug',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$username': typeof UsernameRoute
   '/dashboard': typeof DashboardRoute
+  '/order/$reference': typeof OrderReferenceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/checkout/$username/$productSlug': typeof CheckoutUsernameProductSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$username': typeof UsernameRoute
   '/dashboard': typeof DashboardRoute
+  '/order/$reference': typeof OrderReferenceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/checkout/$username/$productSlug': typeof CheckoutUsernameProductSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$username': typeof UsernameRoute
   '/dashboard': typeof DashboardRoute
+  '/order/$reference': typeof OrderReferenceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/checkout/$username/$productSlug': typeof CheckoutUsernameProductSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$username' | '/dashboard' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/$username'
+    | '/dashboard'
+    | '/order/$reference'
+    | '/api/auth/$'
+    | '/checkout/$username/$productSlug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$username' | '/dashboard' | '/api/auth/$'
-  id: '__root__' | '/' | '/$username' | '/dashboard' | '/api/auth/$'
+  to:
+    | '/'
+    | '/$username'
+    | '/dashboard'
+    | '/order/$reference'
+    | '/api/auth/$'
+    | '/checkout/$username/$productSlug'
+  id:
+    | '__root__'
+    | '/'
+    | '/$username'
+    | '/dashboard'
+    | '/order/$reference'
+    | '/api/auth/$'
+    | '/checkout/$username/$productSlug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   UsernameRoute: typeof UsernameRoute
   DashboardRoute: typeof DashboardRoute
+  OrderReferenceRoute: typeof OrderReferenceRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  CheckoutUsernameProductSlugRoute: typeof CheckoutUsernameProductSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -92,11 +132,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/order/$reference': {
+      id: '/order/$reference'
+      path: '/order/$reference'
+      fullPath: '/order/$reference'
+      preLoaderRoute: typeof OrderReferenceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/checkout/$username/$productSlug': {
+      id: '/checkout/$username/$productSlug'
+      path: '/checkout/$username/$productSlug'
+      fullPath: '/checkout/$username/$productSlug'
+      preLoaderRoute: typeof CheckoutUsernameProductSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -106,7 +160,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   UsernameRoute: UsernameRoute,
   DashboardRoute: DashboardRoute,
+  OrderReferenceRoute: OrderReferenceRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  CheckoutUsernameProductSlugRoute: CheckoutUsernameProductSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

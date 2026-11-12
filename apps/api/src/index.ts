@@ -26,6 +26,8 @@ export const app = createApp({
   getSessionUser,
   allowedOrigins,
   rateLimiter: createRateLimiter({ windowMs: 60_000, max: 120 }),
+  // Webhooks have no session, so they get their own per-address budget.
+  webhookRateLimiter: createRateLimiter({ windowMs: 60_000, max: 240 }),
 });
 
 if (import.meta.main) {

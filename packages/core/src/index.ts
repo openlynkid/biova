@@ -12,30 +12,73 @@ import {
   createProductService,
   type ProductService,
 } from "@biova/products";
-import { pageThemeSchema, type PageTheme } from "@biova/shared";
+import { createOrderRepository, createOrderService, type OrderService } from "@biova/orders";
+import { createFakeProvider, createMidtransProvider, type PaymentProvider } from "@biova/payments";
+import { pageThemeSchema, readEnv, type PageTheme } from "@biova/shared";
 
 export interface BiovaServices {
   creators: CreatorService;
   pages: PageService;
   links: LinkService;
   products: ProductService;
+  orders: OrderService;
+}
+
+// Pick the payment provider from the environment. Midtrans is used when a
+// server key is configured; otherwise a local fake provider keeps development
+// and tests working without gateway credentials. The fake provider still
+// requires a shared secret, so it cannot be driven by an unauthenticated caller.
+export function createPaymentProvider(env: (key: string) => string | undefined = readEnv): PaymentProvider {
+  const serverKey = env("MIDTRANS_SERVER_KEY");
+  if (serverKey) {
+    return createMidtransProvider({ serverKey, isProduction: env("MIDTRANS_IS_PRODUCTION") === "true" });
+  }
+  return createFakeProvider({ secret: env("PAYMENT_FAKE_SECRET") ?? "local-dev-fake-secret" });
 }
 
 // Composition root: the web app and the API both build their services here so
 // they share one set of domain rules. Only this module knows how the domains
 // are wired together.
-export function createServices(db: Database): BiovaServices {
+export interface CreateServicesOptions {
+  paymentProvider?: PaymentProvider;
+}
+
+export function createServices(db: Database, options: CreateServicesOptions = {}): BiovaServices {
   const creatorRepository = createCreatorRepository(db);
   const linkRepository = createLinkRepository(db);
   const pageRepository = createPageRepository(db);
   const productRepository = createProductRepository(db);
+  const orderRepository = createOrderRepository(db);
 
   const links = createLinkService(linkRepository);
   const products = createProductService(productRepository);
   const pages = createPageService(pageRepository, (creatorId) => links.hasEnabledLink(creatorId));
   const creators = createCreatorService(creatorRepository);
 
-  return { creators, pages, links, products };
+  // Checkout resolves the product through this function, so the price always
+  // comes from a published row owned by the creator whose slug was requested.
+  const orders = createOrderService(
+    orderRepository,
+    {
+      async findSellableProduct(creatorSlug, productSlug) {
+        const creator = await creators.getBySlug(creatorSlug);
+        if (!creator) return undefined;
+        const list = await products.listPublished(creator.id);
+        const product = list.find((row) => row.slug === productSlug);
+        if (!product) return undefined;
+        return {
+          creatorId: creator.id,
+          productId: product.id,
+          slug: product.slug,
+          title: product.title,
+          priceIdr: product.priceIdr,
+        };
+      },
+    },
+    options.paymentProvider ?? createPaymentProvider(),
+  );
+
+  return { creators, pages, links, products, orders };
 }
 
 export interface PublicProduct {

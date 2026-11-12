@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServices } from "@biova/core";
+import { createFakeProvider } from "@biova/payments";
 import { createTestDatabase, createTestUser, type TestDatabase } from "@biova/database/testing";
 import { createApp } from "./app";
+
+// Shared secret for the fake provider, so the tests can sign webhook payloads.
+const WEBHOOK_SECRET = "test-webhook-secret";
 
 let context: TestDatabase;
 let app: ReturnType<typeof createApp>;
@@ -12,7 +16,7 @@ let bobId: string;
 
 beforeAll(async () => {
   context = await createTestDatabase();
-  const services = createServices(context.db);
+  const services = createServices(context.db, { paymentProvider: createFakeProvider({ secret: WEBHOOK_SECRET }) });
 
   aliceId = (await createTestUser(context.db)).id;
   bobId = (await createTestUser(context.db)).id;
@@ -209,6 +213,120 @@ describe("biova api", () => {
       const response = await request(path, { method, body: method === "GET" ? undefined : "{}" });
       expect(response.status).toBe(401);
     }
+  });
+
+  test("a visitor can check out a published product and pay via a verified webhook", async () => {
+    const checkout = await request("/v1/checkout", {
+      method: "POST",
+      body: JSON.stringify({
+        creatorSlug: "alice",
+        productSlug: "ebook",
+        buyerName: "Buyer",
+        buyerEmail: "buyer@example.com",
+      }),
+    });
+    expect(checkout.status).toBe(201);
+    const { order, redirectUrl } = (await checkout.json()) as {
+      order: { reference: string; status: string; totalIdr: number };
+      redirectUrl: string | null;
+    };
+    expect(order.status).toBe("pending");
+    expect(order.totalIdr).toBe(49_000);
+    expect(redirectUrl).toContain(order.reference);
+
+    const pending = await request(`/v1/orders/${order.reference}`);
+    expect(pending.status).toBe(200);
+
+    const forged = await request("/v1/webhooks/fake", {
+      method: "POST",
+      body: JSON.stringify({
+        order_id: order.reference,
+        transaction_status: "settlement",
+        gross_amount: "49000",
+        signature: "not-the-secret",
+      }),
+    });
+    expect(forged.status).toBe(401);
+    expect(await forged.json()).toEqual({ error: "invalid_signature" });
+
+    const notification = {
+      order_id: order.reference,
+      transaction_status: "settlement",
+      gross_amount: "49000",
+      signature: WEBHOOK_SECRET,
+    };
+    const paid = await request("/v1/webhooks/fake", { method: "POST", body: JSON.stringify(notification) });
+    expect(paid.status).toBe(200);
+    expect(await paid.json()).toEqual({ outcome: "processed" });
+
+    // A replay is acknowledged but does nothing.
+    const replay = await request("/v1/webhooks/fake", { method: "POST", body: JSON.stringify(notification) });
+    expect(await replay.json()).toEqual({ outcome: "duplicate" });
+
+    const confirmed = await request(`/v1/orders/${order.reference}`);
+    expect(((await confirmed.json()) as { order: { status: string } }).order.status).toBe("paid");
+
+    // The creator sees the order in their list, with the buyer details.
+    const list = await request("/v1/orders", {}, aliceId);
+    const orders = ((await list.json()) as { orders: { reference: string; status: string; buyerEmail: string }[] }).orders;
+    expect(orders.some((row) => row.reference === order.reference && row.status === "paid")).toBe(true);
+
+    // Another creator does not see it.
+    const bobList = await request("/v1/orders", {}, bobId);
+    expect(await bobList.json()).toEqual({ orders: [] });
+  });
+
+  test("checkout refuses an unpublished or foreign product and an amount mismatch is rejected", async () => {
+    const draftProduct = await request(
+      "/v1/products",
+      { method: "POST", body: JSON.stringify({ title: "Hidden", slug: "hidden", priceIdr: 10_000 }) },
+      aliceId,
+    );
+    expect(draftProduct.status).toBe(201);
+
+    const unpublished = await request("/v1/checkout", {
+      method: "POST",
+      body: JSON.stringify({ creatorSlug: "alice", productSlug: "hidden", buyerName: "B", buyerEmail: "b@example.com" }),
+    });
+    expect(unpublished.status).toBe(404);
+
+    const foreign = await request("/v1/checkout", {
+      method: "POST",
+      body: JSON.stringify({ creatorSlug: "bob", productSlug: "ebook", buyerName: "B", buyerEmail: "b@example.com" }),
+    });
+    expect(foreign.status).toBe(404);
+
+    const badInput = await request("/v1/checkout", {
+      method: "POST",
+      body: JSON.stringify({ creatorSlug: "alice", productSlug: "ebook", buyerName: "", buyerEmail: "nope" }),
+    });
+    expect(badInput.status).toBe(422);
+
+    const checkout = await request("/v1/checkout", {
+      method: "POST",
+      body: JSON.stringify({ creatorSlug: "alice", productSlug: "ebook", buyerName: "B", buyerEmail: "b@example.com" }),
+    });
+    const { order } = (await checkout.json()) as { order: { reference: string } };
+
+    const mismatch = await request("/v1/webhooks/fake", {
+      method: "POST",
+      body: JSON.stringify({
+        order_id: order.reference,
+        transaction_status: "settlement",
+        gross_amount: "1",
+        signature: WEBHOOK_SECRET,
+      }),
+    });
+    expect(mismatch.status).toBe(409);
+    expect(await mismatch.json()).toEqual({ error: "amount_mismatch" });
+
+    const stillPending = await request(`/v1/orders/${order.reference}`);
+    expect(((await stillPending.json()) as { order: { status: string } }).order.status).toBe("pending");
+  });
+
+  test("an unknown order reference returns 404 to the buyer", async () => {
+    const response = await request("/v1/orders/NOPE000000");
+    expect(response.status).toBe(404);
   });
 
   test("unknown errors do not leak internals", async () => {

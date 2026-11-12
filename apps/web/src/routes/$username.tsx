@@ -71,13 +71,18 @@ function PublicPage() {
         <section className="product-list" aria-label={`${page.title} products`}>
           <div className="section-heading"><div className="eyebrow">PRODUCTS</div><span className="count">{products.length} ITEM</span></div>
           {products.map((product) => (
-            <article key={product.slug} className="product-card">
+            <Link
+              key={product.slug}
+              className="product-card"
+              to="/checkout/$username/$productSlug"
+              params={{ username: creator.slug, productSlug: product.slug }}
+            >
               <div className="product-body">
                 <strong>{product.title}</strong>
                 {product.description ? <small>{product.description}</small> : null}
               </div>
               <span className="product-price">{formatPriceIdr(product.priceIdr)}</span>
-            </article>
+            </Link>
           ))}
         </section>
       ) : null}

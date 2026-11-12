@@ -60,7 +60,8 @@ reaches the database. See `docs/adr/0006-creator-dashboard.md`.
 - `apps/api`: Elysia HTTP adapter only. `src/app.ts` builds the injectable app;
   `src/index.ts` wires real dependencies. Keep business rules in packages, not route handlers.
 - `packages/core`: composition root that builds the domain services and exposes the public read model.
-- `packages/creator`, `packages/page`, `packages/links`, `packages/products`: domain packages (repository + service).
+- `packages/creator`, `packages/page`, `packages/links`, `packages/products`, `packages/orders`: domain packages (repository + service).
+- `packages/payments`: payment provider abstraction with a Midtrans adapter and a fake provider for tests and local development.
 - `packages/plugin-sdk`: stable contracts available to first-party and third-party plugins.
 - `packages/plugin-registry`: build-time plugin catalog plus runtime activation resolver.
 - `packages/database`: Drizzle schema, connection and migrations.
@@ -95,6 +96,10 @@ never read from the request.
 | PUT | `/v1/products/:id/status` | yes | Publish, unpublish or archive a product |
 | DELETE | `/v1/products/:id` | yes | Remove a product |
 | PUT | `/v1/products/reorder` | yes | Set the product order |
+| GET | `/v1/orders` | yes | List the creator's orders |
+| POST | `/v1/checkout` | no | Start a checkout for a published product |
+| GET | `/v1/orders/:reference` | no | Buyer order status (reference is the bearer token) |
+| POST | `/v1/webhooks/:provider` | no | Payment gateway callback (signature verified) |
 | GET | `/v1/public/:slug` | no | Published page read model |
 
 Errors are stable codes (`unauthorized`, `invalid_input`, `not_found`,
@@ -111,7 +116,25 @@ the not-found view and never reveal that a page exists. Link destinations are
 restricted to `http`/`https` and render with `rel="noopener noreferrer nofollow"`.
 Published digital products render as a catalog below the links, with prices
 formatted as whole rupiah (`formatPriceIdr`). Only published products are in the
-read model, so drafts and archived items stay private.
+read model, so drafts and archived items stay private. Each product links to
+`/checkout/:username/:productSlug`, where a visitor can buy it without signing in.
+
+## Checkout and orders
+
+A visitor buys a product from the checkout page: name, email and optional phone.
+The price is resolved server-side from the published row, so the request never
+carries an amount. Paid products redirect to the gateway's hosted page; free
+products are fulfilled immediately. `/order/:reference` shows the buyer the
+order status and their items; the random reference is the bearer credential.
+
+The creator sees orders and revenue in the dashboard (`ORDERS` panel).
+
+Payments use Midtrans. Set `MIDTRANS_SERVER_KEY` to enable it; without it, a fake
+provider is used for local development and tests (it still requires
+`PAYMENT_FAKE_SECRET`, defaulting to a local value). The gateway callback is
+`POST /v1/webhooks/:provider`; the signature is verified before anything is
+recorded, and the amount is checked against the stored order. See
+`docs/adr/0008-checkout-and-payments.md`.
 
 ## Plugin model
 
@@ -140,9 +163,9 @@ no environment variables set, and CI runs exactly these four. Domain and API
 tests run against PGlite (`@biova/database/testing`) with the real Drizzle
 migrations applied, so they exercise actual SQL without a database server.
 
-Test coverage today: creator, page, links and products services (28 tests), the
-API routes and isolation rules (16 tests), the public read model (4 tests) and
-shared schemas (13 tests).
+Test coverage today: creator, page, links, products and orders services (39
+tests), the API routes and isolation rules (19 tests), the public read model (4
+tests), shared schemas (16 tests) and the payment providers (6 tests).
 
 Notes from earlier validation passes:
 

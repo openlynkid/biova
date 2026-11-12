@@ -136,7 +136,7 @@ function Onboarding() {
 
 function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeof getDashboard>>>; email: string }) {
   const router = useRouter();
-  const { creator, page, links, products } = data;
+  const { creator, page, links, products, orders } = data;
   const published = page?.status === "published";
   const [error, setError] = useState<string | null>(null);
 
@@ -171,6 +171,7 @@ function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeo
       <PageForm page={page} onSave={(payload) => run(async () => updatePage({ data: payload }))} />
       <LinksEditor links={links} onError={setError} />
       <ProductsEditor products={products} onError={setError} />
+      <OrdersPanel orders={orders} />
     </Shell>
   );
 }
@@ -351,6 +352,35 @@ function ProductsEditor({ products, onError }: { products: ProductRow[]; onError
         ))}
       </ul>
       {products.length === 0 ? <p className="intro">No products yet. Add your first digital product above.</p> : null}
+    </section>
+  );
+}
+
+type OrderRow = { reference: string; status: string; totalIdr: number; buyerName: string; buyerEmail: string; createdAt: string; items: { title: string; unitPriceIdr: number }[] };
+
+function OrdersPanel({ orders }: { orders: OrderRow[] }) {
+  const paid = orders.filter((order) => order.status === "paid");
+  const revenue = paid.reduce((sum, order) => sum + order.totalIdr, 0);
+  return (
+    <section className="panel">
+      <div className="eyebrow">ORDERS ({orders.length})</div>
+      <div className="stat-row">
+        <div className="stat"><span className="stat-label">PAID</span><strong>{paid.length}</strong></div>
+        <div className="stat"><span className="stat-label">REVENUE</span><strong>{formatPriceIdr(revenue)}</strong></div>
+      </div>
+      <ul className="rows">
+        {orders.map((order) => (
+          <li className={order.status === "paid" ? "row" : "row disabled"} key={order.reference}>
+            <span className="row-icon">₨</span>
+            <div className="row-body">
+              <strong>{order.items.map((item) => item.title).join(", ") || "Order"}</strong>
+              <small>{order.buyerName} · {order.buyerEmail} · {order.status} · {new Date(order.createdAt).toLocaleDateString("id-ID")}</small>
+            </div>
+            <span className="product-price">{formatPriceIdr(order.totalIdr)}</span>
+          </li>
+        ))}
+      </ul>
+      {orders.length === 0 ? <p className="intro">No orders yet. Share your page to make your first sale.</p> : null}
     </section>
   );
 }

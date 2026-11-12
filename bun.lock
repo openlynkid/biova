@@ -26,8 +26,11 @@
         "@biova/creator": "workspace:*",
         "@biova/database": "workspace:*",
         "@biova/links": "workspace:*",
+        "@biova/orders": "workspace:*",
         "@biova/page": "workspace:*",
+        "@biova/payments": "workspace:*",
         "@biova/plugin-registry": "workspace:*",
+        "@biova/products": "workspace:*",
         "@biova/shared": "workspace:*",
         "@elysiajs/cors": "1.4.3",
         "drizzle-orm": "0.45.4",
@@ -85,7 +88,9 @@
         "@biova/creator": "workspace:*",
         "@biova/database": "workspace:*",
         "@biova/links": "workspace:*",
+        "@biova/orders": "workspace:*",
         "@biova/page": "workspace:*",
+        "@biova/payments": "workspace:*",
         "@biova/products": "workspace:*",
         "@biova/shared": "workspace:*",
       },
@@ -136,6 +141,23 @@
         "typescript": "5.9.3",
       },
     },
+    "packages/orders": {
+      "name": "@biova/orders",
+      "version": "0.1.0",
+      "dependencies": {
+        "@biova/database": "workspace:*",
+        "@biova/payments": "workspace:*",
+        "@biova/shared": "workspace:*",
+        "drizzle-orm": "0.45.4",
+        "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@biova/creator": "workspace:*",
+        "@biova/products": "workspace:*",
+        "@electric-sql/pglite": "0.5.16",
+        "typescript": "5.9.3",
+      },
+    },
     "packages/page": {
       "name": "@biova/page",
       "version": "0.1.0",
@@ -149,6 +171,16 @@
         "@biova/creator": "workspace:*",
         "@biova/links": "workspace:*",
         "@electric-sql/pglite": "0.5.16",
+        "typescript": "5.9.3",
+      },
+    },
+    "packages/payments": {
+      "name": "@biova/payments",
+      "version": "0.1.0",
+      "dependencies": {
+        "@biova/shared": "workspace:*",
+      },
+      "devDependencies": {
         "typescript": "5.9.3",
       },
     },
@@ -277,7 +309,11 @@
 
     "@biova/links": ["@biova/links@workspace:packages/links"],
 
+    "@biova/orders": ["@biova/orders@workspace:packages/orders"],
+
     "@biova/page": ["@biova/page@workspace:packages/page"],
+
+    "@biova/payments": ["@biova/payments@workspace:packages/payments"],
 
     "@biova/plugin-registry": ["@biova/plugin-registry@workspace:packages/plugin-registry"],
 

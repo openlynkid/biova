@@ -12,6 +12,9 @@ export interface AppDeps {
   getSessionUser: (headers: Headers) => Promise<SessionUser | null>;
   allowedOrigins: string[];
   rateLimiter?: RateLimiter;
+  // Webhook deliveries carry no session, so the per-user limiter never sees
+  // them; this separate limiter caps them per client address instead.
+  webhookRateLimiter?: RateLimiter;
 }
 
 // Domain error codes are stable strings; map them to HTTP statuses once here so
@@ -23,6 +26,9 @@ const STATUS_BY_ERROR: Record<string, number> = {
   already_exists: 409,
   invalid_transition: 409,
   not_publishable: 422,
+  amount_mismatch: 409,
+  invalid_signature: 401,
+  payment_unavailable: 502,
 };
 
 function errorResponse(set: { status?: number | string }, error: string) {
@@ -327,6 +333,98 @@ export function createApp(deps: AppDeps) {
       const result = await auth.services.products.reorder(auth.creator.id, ids);
       if (!result.ok) return errorResponse(set, result.error);
       return { ids: result.value.ids };
+    })
+
+    // Checkout is public: a visitor who is not signed in must be able to buy.
+    // The price is read server-side from the published row, so a client cannot
+    // influence the amount.
+    .post("/v1/checkout", async ({ body, set }) => {
+      const payload = (body ?? {}) as Record<string, unknown>;
+      const services = await deps.getServices();
+      const result = await services.orders.checkout({
+        creatorSlug: String(payload.creatorSlug ?? ""),
+        productSlug: String(payload.productSlug ?? ""),
+        buyerName: String(payload.buyerName ?? ""),
+        buyerEmail: String(payload.buyerEmail ?? ""),
+        buyerPhone: payload.buyerPhone == null ? null : String(payload.buyerPhone),
+      });
+      if (!result.ok) return errorResponse(set, result.error);
+      set.status = 201;
+      return {
+        order: {
+          reference: result.value.order.reference,
+          status: result.value.order.status,
+          totalIdr: result.value.order.totalIdr,
+          currency: result.value.order.currency,
+        },
+        redirectUrl: result.value.redirectUrl,
+      };
+    })
+    // Creator order list. Requires a session; returns only the creator's orders.
+    .get("/v1/orders", async ({ request, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const rows = await auth.services.orders.listByCreator(auth.creator.id);
+      return {
+        orders: rows.map(({ order, items }) => ({
+          reference: order.reference,
+          status: order.status,
+          totalIdr: order.totalIdr,
+          currency: order.currency,
+          buyerName: order.buyerName,
+          buyerEmail: order.buyerEmail,
+          createdAt: order.createdAt,
+          items: items.map((item) => ({ title: item.title, unitPriceIdr: item.unitPriceIdr })),
+        })),
+      };
+    })
+    // Buyer order lookup. The random reference is the bearer credential; it is
+    // not derivable from the creator or product slug.
+    .get("/v1/orders/:reference", async ({ params, set }) => {
+      const services = await deps.getServices();
+      const found = await services.orders.getByReference(params.reference);
+      if (!found) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      return {
+        order: {
+          reference: found.order.reference,
+          status: found.order.status,
+          totalIdr: found.order.totalIdr,
+          currency: found.order.currency,
+          buyerEmail: found.order.buyerEmail,
+          paidAt: found.order.paidAt,
+        },
+        items: found.items.map((item) => ({ title: item.title, unitPriceIdr: item.unitPriceIdr })),
+      };
+    })
+
+    // Provider webhook. Public by necessity (the gateway cannot sign in), so it
+    // is protected by the provider signature check inside the orders service,
+    // plus a separate per-address rate limit. A forged body is rejected without
+    // recording an event, so it cannot burn an idempotency key.
+    .post("/v1/webhooks/:provider", async ({ request, params, body, set }) => {
+      if (deps.webhookRateLimiter) {
+        const address = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+        const limited = deps.webhookRateLimiter.consume(`webhook:${params.provider}:${address}`);
+        if (!limited.allowed) {
+          set.status = 429;
+          set.headers["retry-after"] = String(Math.ceil(limited.retryAfterMs / 1000));
+          return { error: "rate_limited" };
+        }
+      }
+      const services = await deps.getServices();
+      const payload = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+      const result = await services.orders.handleWebhook(payload);
+      if (!result.ok) return errorResponse(set, result.error);
+      // Gateways retry on any non-2xx, so a duplicate or ignored delivery is
+      // still acknowledged as accepted.
+      return { outcome: result.value.outcome };
     })
 
     // Public read model. No session required; only published pages are returned.

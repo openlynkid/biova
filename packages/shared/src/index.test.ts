@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
+  canTransitionOrder,
   canTransitionPage,
   canTransitionProduct,
   createCreatorSchema,
   createLinkSchema,
+  createOrderSchema,
   createProductSchema,
   creatorSlugSchema,
   formatPriceIdr,
+  isPaymentFailed,
+  isPaymentPaid,
   linkUrlSchema,
   pageThemeSchema,
   productSlugSchema,
@@ -119,5 +123,45 @@ describe("rate limiter", () => {
 
     clock = 1001;
     expect(limiter.consume("a").allowed).toBe(true);
+  });
+});
+
+describe("order schema", () => {
+  test("requires a name, a valid email and optional phone", () => {
+    const ok = createOrderSchema.safeParse({
+      productSlug: "ebook",
+      buyerName: "  Buyer  ",
+      buyerEmail: "buyer@example.com",
+    });
+    expect(ok.success && ok.data.buyerName).toBe("Buyer");
+
+    expect(createOrderSchema.safeParse({ productSlug: "ebook", buyerName: "", buyerEmail: "a@b.com" }).success).toBe(false);
+    expect(createOrderSchema.safeParse({ productSlug: "ebook", buyerName: "B", buyerEmail: "nope" }).success).toBe(false);
+    expect(
+      createOrderSchema.safeParse({ productSlug: "ebook", buyerName: "B", buyerEmail: "a@b.com", buyerPhone: "abc" }).success,
+    ).toBe(false);
+    expect(
+      createOrderSchema.safeParse({ productSlug: "ebook", buyerName: "B", buyerEmail: "a@b.com", buyerPhone: "+62 812 3456 7890" })
+        .success,
+    ).toBe(true);
+  });
+
+  test("only allows the documented order transitions", () => {
+    expect(canTransitionOrder("pending", "paid")).toBe(true);
+    expect(canTransitionOrder("paid", "refunded")).toBe(true);
+    expect(canTransitionOrder("paid", "pending")).toBe(false);
+    expect(canTransitionOrder("failed", "paid")).toBe(false);
+    expect(canTransitionOrder("expired", "paid")).toBe(false);
+    // A no-op transition is allowed so a repeated webhook is not an error.
+    expect(canTransitionOrder("paid", "paid")).toBe(true);
+  });
+
+  test("classifies provider payment states", () => {
+    expect(isPaymentPaid("settlement")).toBe(true);
+    expect(isPaymentPaid("capture")).toBe(true);
+    expect(isPaymentPaid("pending")).toBe(false);
+    expect(isPaymentFailed("deny")).toBe(true);
+    expect(isPaymentFailed("expire")).toBe(true);
+    expect(isPaymentFailed("settlement")).toBe(false);
   });
 });

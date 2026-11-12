@@ -56,7 +56,13 @@ Map before adding tables so the same concept is not created twice:
 | link | `links` |
 | page_block | `page_blocks` |
 | plugin, plugin_installation, plugin_setting | `plugins`, `plugin_installations`, `plugin_settings` |
-| creator_profile, page_theme, link_click_event, digital_product, product_asset, commerce_order, commerce_order_item, payment_transaction, payment_webhook_event, product_entitlement, page_view_event | not built yet |
+| digital_product | `products` |
+| commerce_order | `orders` |
+| commerce_order_item | `order_items` |
+| payment_transaction | `payment_transactions` |
+| payment_webhook_event | `payment_webhook_events` |
+| product_entitlement | `product_entitlements` |
+| creator_profile, page_theme, link_click_event, product_asset, page_view_event | not built yet |
 
 Note that `creators.bio` already covers part of `creator_profile`, and `pages.theme`
 covers part of `page_theme`. Extend those tables rather than creating parallel ones
@@ -119,10 +125,15 @@ a build step that requires `DATABASE_URL`.
   dependencies. Business rules belong in packages.
 - `packages/core`: composition root. Builds the domain services from a
   `Database` handle and exposes the public read model `getPublicPage`.
-- `packages/creator`, `packages/page`, `packages/links`, `packages/products`:
-  domain packages. Each exports a repository (SQL) and a service (rules,
-  returning `Result`). Products own `products` (slug unique per creator, price
-  in whole rupiah) and publish through the same transition table as pages.
+- `packages/creator`, `packages/page`, `packages/links`, `packages/products`,
+  `packages/orders`: domain packages. Each exports a repository (SQL) and a
+  service (rules, returning `Result`). Products own `products` (slug unique per
+  creator, price in whole rupiah) and publish through the same transition table
+  as pages. Orders own `orders`, `order_items`, `payment_transactions`,
+  `payment_webhook_events` and `product_entitlements`.
+- `packages/payments`: `PaymentProvider` abstraction with a Midtrans adapter
+  (sha512 signature verification) and a fake provider for tests and local
+  development. `core` picks the provider from the environment.
 - `packages/plugin-sdk`: stable plugin contracts (`BiovaPlugin`,
   `ErasedPageBlockDefinition`).
 - `packages/plugin-registry`: build-time catalog + runtime activation resolver.
@@ -192,6 +203,22 @@ a build step that requires `DATABASE_URL`.
 - Page theme colours are validated as `#rgb`/`#rrggbb` (`themeColorSchema`) and
   rendered as inline CSS variables. Do not loosen that schema: the values reach a
   `style` attribute.
+
+## Payments and webhooks
+
+- The order price is always resolved server-side from the published product; the
+  checkout request never carries an amount. Do not add a client-supplied price.
+- `POST /v1/webhooks/:provider` is the only unauthenticated write. `handleWebhook`
+  verifies the signature, then checks the amount against the stored order, and
+  only then records the event for idempotency. Keep that order: recording first
+  lets a signed-but-wrong delivery burn the idempotency key.
+- `applyStatus` moves the order and grants entitlements in one transaction, and
+  only from the expected `from_status`, so the order and entitlements cannot
+  drift and concurrent webhooks cannot both win.
+- The order reference is the buyer's bearer token for `/order/:reference`; it is
+  random and not derivable from the creator or product slug.
+- Local development and tests use the fake provider unless `MIDTRANS_SERVER_KEY`
+  is set. The fake provider still requires `PAYMENT_FAKE_SECRET`.
 
 ## Verification expectations
 

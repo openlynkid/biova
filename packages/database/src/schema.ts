@@ -19,6 +19,21 @@ export const pageStatus = pgEnum("page_status", ["draft", "published", "archived
 // in the products domain service; the enum only rejects unknown states.
 export const productStatus = pgEnum("product_status", ["draft", "published", "archived"]);
 
+// Values mirror orderStatusSchema in @biova/shared. Transitions are enforced in
+// the orders domain service; the enum only rejects unknown states.
+export const orderStatus = pgEnum("order_status", ["pending", "paid", "failed", "expired", "refunded"]);
+
+// Raw provider states. The orders service maps them onto the order status.
+export const paymentStatus = pgEnum("payment_status", [
+  "pending",
+  "settlement",
+  "capture",
+  "deny",
+  "cancel",
+  "expire",
+  "refund",
+]);
+
 export const creators = pgTable("creators", {
   id: uuid("id").defaultRandom().primaryKey(),
   // One creator profile per auth user.
@@ -69,6 +84,92 @@ export const products = pgTable("products", {
   uniqueIndex("products_creator_slug_uq").on(table.creatorId, table.slug),
   index("products_creator_sort_idx").on(table.creatorId, table.sortOrder),
   index("products_status_idx").on(table.status),
+]);
+
+export const orders = pgTable("orders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id, { onDelete: "cascade" }),
+  // Short random public reference. Buyers open their confirmation page with it,
+  // so it must not be derivable from the creator slug or the product slug.
+  reference: varchar("reference", { length: 32 }).notNull(),
+  status: orderStatus("status").notNull().default("pending"),
+  buyerName: varchar("buyer_name", { length: 120 }).notNull(),
+  buyerEmail: varchar("buyer_email", { length: 254 }).notNull(),
+  buyerPhone: varchar("buyer_phone", { length: 32 }),
+  // Amounts are stored on the order so a later price change never rewrites
+  // history. Rupiah has no minor unit, so these are whole integers.
+  subtotalIdr: integer("subtotal_idr").notNull(),
+  totalIdr: integer("total_idr").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("IDR"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  ...timestamps(),
+}, (table) => [
+  uniqueIndex("orders_reference_uq").on(table.reference),
+  index("orders_creator_created_idx").on(table.creatorId, table.createdAt),
+  index("orders_buyer_email_idx").on(table.buyerEmail),
+  index("orders_status_idx").on(table.status),
+]);
+
+export const orderItems = pgTable("order_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  // Snapshot of the product at purchase time: title and price are copied so the
+  // order stays readable even if the product is later edited or deleted.
+  productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+  productSlug: varchar("product_slug", { length: 48 }).notNull(),
+  title: varchar("title", { length: 120 }).notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  unitPriceIdr: integer("unit_price_idr").notNull(),
+  totalPriceIdr: integer("total_price_idr").notNull(),
+  ...timestamps(),
+}, (table) => [index("order_items_order_idx").on(table.orderId)]);
+
+export const paymentTransactions = pgTable("payment_transactions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  // Provider-side id (Midtrans transaction_id / order_id). Unique per provider
+  // so a replayed webhook updates one row instead of inserting a duplicate.
+  providerReference: varchar("provider_reference", { length: 128 }).notNull(),
+  status: paymentStatus("status").notNull().default("pending"),
+  amountIdr: integer("amount_idr").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("IDR"),
+  redirectUrl: text("redirect_url"),
+  rawPayload: jsonb("raw_payload").$type<Record<string, unknown>>().notNull().default({}),
+  ...timestamps(),
+}, (table) => [
+  uniqueIndex("payment_transactions_provider_ref_uq").on(table.provider, table.providerReference),
+  index("payment_transactions_order_idx").on(table.orderId),
+]);
+
+// One row per webhook delivery we accept, keyed by the provider event id. The
+// unique index is what makes webhook handling idempotent: a replay inserts
+// nothing and is treated as already processed.
+export const paymentWebhookEvents = pgTable("payment_webhook_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  eventId: varchar("event_id", { length: 160 }).notNull(),
+  eventType: varchar("event_type", { length: 64 }).notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
+  ...timestamps(),
+}, (table) => [uniqueIndex("payment_webhook_events_provider_event_uq").on(table.provider, table.eventId)]);
+
+// A buyer's right to a product. Created only after a verified payment. Delivery
+// (the signed download) reads this row; a public URL alone grants nothing.
+export const productEntitlements = pgTable("product_entitlements", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id, { onDelete: "cascade" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  buyerEmail: varchar("buyer_email", { length: 254 }).notNull(),
+  grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  ...timestamps(),
+}, (table) => [
+  // One entitlement per (order, product): a replayed webhook cannot grant twice.
+  uniqueIndex("product_entitlements_order_product_uq").on(table.orderId, table.productId),
+  index("product_entitlements_buyer_idx").on(table.buyerEmail),
 ]);
 
 export const plugins = pgTable("plugins", {
