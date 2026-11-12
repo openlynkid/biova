@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLocalStorage, type BlobStorage } from "./index";
+import { createLocalStorage, findOrphanKeys, type BlobStorage } from "./index";
 
 let root: string;
 let storage: BlobStorage;
@@ -57,5 +57,34 @@ describe("local storage", () => {
     await storage.remove(stored.key);
     expect(await storage.get(stored.key)).toBeUndefined();
     await storage.remove(stored.key);
+  });
+
+  test("lists the keys it holds", async () => {
+    expect(await storage.list()).toEqual([]);
+    const a = await storage.put({ data: bytes("a"), contentType: "text/plain", fileName: "a.txt" });
+    const b = await storage.put({ data: bytes("b"), contentType: "text/plain", fileName: "b.pdf" });
+    expect((await storage.list()).sort()).toEqual([a.key, b.key].sort());
+  });
+
+  test("list ignores files that are not valid keys", async () => {
+    const stored = await storage.put({ data: bytes("x"), contentType: "text/plain", fileName: "x.txt" });
+    await writeFile(join(root, "stray.txt"), "not a key");
+    expect(await storage.list()).toEqual([stored.key]);
+  });
+});
+
+describe("findOrphanKeys", () => {
+  test("returns store keys no row references, sorted", () => {
+    const store = ["bb/22222222222222222222222222222222.txt", "aa/11111111111111111111111111111111.txt"];
+    expect(findOrphanKeys(store, [store[0]])).toEqual([store[1]]);
+  });
+
+  test("returns nothing when every stored key is referenced", () => {
+    const store = ["aa/11111111111111111111111111111111.txt"];
+    expect(findOrphanKeys(store, store)).toEqual([]);
+  });
+
+  test("returns nothing for an empty store", () => {
+    expect(findOrphanKeys([], ["aa/11111111111111111111111111111111.txt"])).toEqual([]);
   });
 });

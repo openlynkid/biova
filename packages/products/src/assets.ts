@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { productAssets } from "@biova/database/schema";
 import type { Database } from "@biova/database/types";
 import { createAssetSchema, MAX_ASSET_BYTES, type AssetView, type Result, ok, fail } from "@biova/shared";
-import type { BlobStorage } from "@biova/storage";
+import { findOrphanKeys, type BlobStorage } from "@biova/storage";
 
 export type ProductAsset = typeof productAssets.$inferSelect;
 
@@ -26,6 +26,9 @@ export interface AssetRepository {
   }): Promise<ProductAsset>;
   delete(creatorId: string, assetId: string): Promise<ProductAsset | undefined>;
   reorder(creatorId: string, productId: string, orderedIds: string[]): Promise<void>;
+  // Every storage key any row still references. The orphan sweep compares the
+  // store against this list, so a key missing here is a key nothing owns.
+  listStorageKeys(): Promise<string[]>;
 }
 
 export function createAssetRepository(db: Database): AssetRepository {
@@ -87,7 +90,39 @@ export function createAssetRepository(db: Database): AssetRepository {
         where a.id = v.id and a.creator_id = ${creatorId} and a.product_id = ${productId}
       `);
     },
+
+    async listStorageKeys() {
+      const rows = await db.select({ storageKey: productAssets.storageKey }).from(productAssets);
+      return rows.map((row) => row.storageKey);
+    },
   };
+}
+
+export interface AssetSweepResult {
+  objects: number;
+  referenced: number;
+  orphans: string[];
+  removed: number;
+}
+
+// Reconciles the store against the rows. Deleting a product or creator cascades
+// the `product_assets` rows but not the bytes, so this is the only path that
+// removes them. It reports by default; `delete: true` is the destructive form.
+// Standalone so the CLI sweep can run it without a service or a creator.
+export async function sweepOrphanedAssets(
+  storage: BlobStorage,
+  repository: AssetRepository,
+  options?: { delete?: boolean },
+): Promise<AssetSweepResult> {
+  const [storeKeys, referencedKeys] = await Promise.all([storage.list(), repository.listStorageKeys()]);
+  const orphans = findOrphanKeys(storeKeys, referencedKeys);
+  const result: AssetSweepResult = { objects: storeKeys.length, referenced: referencedKeys.length, orphans, removed: 0 };
+  if (!options?.delete) return result;
+  for (const key of orphans) {
+    await storage.remove(key);
+    result.removed += 1;
+  }
+  return result;
 }
 
 export interface AssetService {

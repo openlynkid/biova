@@ -7,6 +7,8 @@ import {
   createAssetService,
   createProductRepository,
   createProductService,
+  sweepOrphanedAssets,
+  type AssetRepository,
   type AssetService,
 } from "./index";
 
@@ -28,12 +30,17 @@ function memoryStorage() {
     async remove(key) {
       objects.delete(key);
     },
+    async list() {
+      return [...objects.keys()];
+    },
   };
   return { storage, objects };
 }
 
 let context: TestDatabase;
 let service: AssetService;
+let repository: AssetRepository;
+let storage: BlobStorage;
 let products: ReturnType<typeof createProductService>;
 let creatorId: string;
 let productId: string;
@@ -57,7 +64,8 @@ beforeAll(async () => {
 
   const memory = memoryStorage();
   objects = memory.objects;
-  const repository = createAssetRepository(context.db);
+  storage = memory.storage;
+  repository = createAssetRepository(context.db);
   service = createAssetService(repository, memory.storage, {
     isOwnedProduct: (creator, id) => products.ownsProduct(creator, id),
   });
@@ -140,5 +148,33 @@ describe("asset service", () => {
     const listed = await service.list(creatorId, fresh.value.id);
     if (!listed.ok) throw new Error("expected list");
     expect(listed.value.map((asset) => asset.fileName)).toEqual(["b.txt", "a.txt"]);
+  });
+});
+
+describe("orphan sweep", () => {
+  test("reports nothing when every stored key has a row", async () => {
+    const result = await sweepOrphanedAssets(storage, repository);
+    expect(result.orphans).toEqual([]);
+    expect(result.objects).toBe(result.referenced);
+  });
+
+  test("finds bytes left behind when a product is deleted, and removes them only on request", async () => {
+    const temp = await products.create({ creatorId, title: "Temp", slug: "temp", priceIdr: 1_000 });
+    if (!temp.ok) throw new Error("failed to create product");
+    const added = await service.add({ creatorId, productId: temp.value.id, fileName: "gone.txt", contentType: "text/plain", data: bytes("gone") });
+    if (!added.ok) throw new Error("expected asset");
+    const key = [...objects.keys()].at(-1);
+    if (!key) throw new Error("expected stored key");
+
+    // Deleting the product cascades the row but leaves the blob in the store.
+    await products.remove(creatorId, temp.value.id);
+    expect(objects.has(key)).toBe(true);
+
+    const report = await sweepOrphanedAssets(storage, repository);
+    expect(report.orphans).toContain(key);
+
+    const cleaned = await sweepOrphanedAssets(storage, repository, { delete: true });
+    expect(cleaned.removed).toBeGreaterThan(0);
+    expect(objects.has(key)).toBe(false);
   });
 });

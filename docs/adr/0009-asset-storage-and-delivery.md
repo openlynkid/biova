@@ -86,6 +86,7 @@ guessed or shared indefinitely.
   row that grants access in the first place.
 - Deleting an asset through the API removes its bytes as well, but deleting a
   whole product or creator cascades the `product_assets` rows in the database and
-  leaves the bytes behind. A background sweep that reconciles the store against
-  the rows is the intended follow-up; it is out of scope here because the rows
+  leaves the bytes behind. `bun run storage:sweep` reconciles the two: it reports
+  blobs no row references and removes them with `--delete`. It is a manual
+  maintenance command rather than an automatic background job, because the rows
   are the source of truth and an orphaned blob is never reachable without one.

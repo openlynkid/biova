@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { MAX_ASSET_BYTES } from "@biova/shared";
 
@@ -22,6 +22,9 @@ export interface BlobStorage {
   put(input: PutObjectInput): Promise<StoredObject>;
   get(key: string): Promise<Uint8Array | undefined>;
   remove(key: string): Promise<void>;
+  // Every key the store holds, used by the orphan sweep to compare the store
+  // against the rows that are supposed to own the bytes.
+  list(): Promise<string[]>;
 }
 
 export type StorageError = "too_large" | "invalid_input";
@@ -72,6 +75,29 @@ export function createLocalStorage(options: { root: string; maxBytes?: number })
       if (!full) return;
       await rm(full, { force: true });
     },
+
+    async list() {
+      // The store holds exactly one level of shard directories. Anything that
+      // does not match the key shape is ignored rather than reported, so a stray
+      // editor backup or .DS_Store is never handed to the sweep as a key.
+      let shards;
+      try {
+        shards = await readdir(root, { withFileTypes: true });
+      } catch {
+        return [];
+      }
+      const keys: string[] = [];
+      for (const shard of shards) {
+        if (!shard.isDirectory()) continue;
+        const entries = await readdir(join(root, shard.name), { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          const key = `${shard.name}/${entry.name}`;
+          if (resolveKey(key)) keys.push(key);
+        }
+      }
+      return keys;
+    },
   };
 }
 
@@ -80,4 +106,11 @@ export function createLocalStorage(options: { root: string; maxBytes?: number })
 function extensionOf(fileName: string): string {
   const match = /\.([a-zA-Z0-9]{1,8})$/.exec(fileName.trim());
   return match ? `.${match[1].toLowerCase()}` : "";
+}
+
+// Keys the store holds that no row references. Pure so the sweep's decision can
+// be tested without a filesystem or a database: the caller supplies both sides.
+export function findOrphanKeys(storeKeys: string[], referencedKeys: Iterable<string>): string[] {
+  const referenced = new Set(referencedKeys);
+  return storeKeys.filter((key) => !referenced.has(key)).sort();
 }

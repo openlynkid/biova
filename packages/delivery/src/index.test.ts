@@ -9,6 +9,7 @@ function memoryStorage(objects: Record<string, Uint8Array>) {
     put: async () => ({ key: "unused", sizeBytes: 0 }),
     get: async (key: string) => objects[key],
     remove: async () => {},
+    list: async () => Object.keys(objects),
   };
 }
 

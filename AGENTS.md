@@ -82,6 +82,10 @@ Schema constraints worth knowing:
   `products`.
 - `product_entitlements` has a unique `(order_id, product_id)` index, so a
   replayed webhook cannot grant a buyer the same product twice.
+- Deleting a product or a creator cascades `product_assets` rows but not the
+  stored bytes. Those become unreachable orphans; `bun run storage:sweep`
+  reports them and `--delete` removes them. This is a manual command, not an
+  automatic job.
 
 ## Environment
 
@@ -113,9 +117,12 @@ bun run build                   # turbo build (web is the only builder)
 bun run db:generate             # drizzle-kit generate -> packages/database/drizzle
 bun run db:migrate              # apply migrations + assert auth tables exist
 bun run db:seed                 # dev demo data (creator "demo", published page)
+bun run storage:sweep           # report uploaded files no product row references
+bun run storage:sweep --delete  # remove those files
 ```
 
-`bun run dev`, `bun run db:migrate` and `bun run db:seed` read `DATABASE_URL`.
+`bun run dev`, `bun run db:migrate`, `bun run db:seed` and
+`bun run storage:sweep` read `DATABASE_URL`.
 The root scripts pass `--env-file=.env` because the web dev server runs under
 Node, where Bun does not load `.env` automatically. Run them from the repo root;
 `--env-file` is relative to the process cwd, so a missing `.env` is only fatal if
@@ -143,10 +150,11 @@ a build step that requires `DATABASE_URL`.
   for `product_assets` (upload, list, remove, reorder). Orders own `orders`,
   `order_items`, `payment_transactions`, `payment_webhook_events` and
   `product_entitlements`.
-- `packages/storage`: `BlobStorage` port (`put`/`get`/`remove`) plus a local
-  filesystem driver. Keys are server-generated (`<shard>/<random><ext>`); the
-  driver validates every key and confirms the resolved path stays inside the
-  root, so a caller can never choose a path.
+- `packages/storage`: `BlobStorage` port (`put`/`get`/`remove`/`list`) plus a
+  local filesystem driver. Keys are server-generated (`<shard>/<random><ext>`);
+  the driver validates every key and confirms the resolved path stays inside the
+  root, so a caller can never choose a path. `findOrphanKeys` is the pure
+  comparison the sweep runs.
 - `packages/delivery`: signed, time-boxed download tokens (`token.ts`) and the
   buyer delivery read model. Reaches orders and products through injected
   functions, so it imports neither domain. Download checks: token signature and

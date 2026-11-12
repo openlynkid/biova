@@ -35,10 +35,12 @@ Run PostgreSQL locally, then:
 bun run db:generate
 bun run db:migrate
 bun run db:seed                # optional: demo creator "demo" with a published page
+bun run storage:sweep          # report uploaded files no product row references
+bun run storage:sweep --delete # remove those files
 ```
 
-The `dev`, `db:migrate` and `db:seed` scripts load `.env` themselves
-(`--env-file=.env`). Run them from the repository root.
+The `dev`, `db:migrate`, `db:seed` and `storage:sweep` scripts load `.env`
+themselves (`--env-file=.env`). Run them from the repository root.
 
 With the demo data seeded, the public page is at http://localhost:3000/demo.
 
@@ -159,6 +161,10 @@ working on its own. Downloads re-check that the entitlement is active and that
 the asset belongs to the granted product; revoking an entitlement stops new
 downloads immediately. The storage key never appears in a URL or a response. See
 `docs/adr/0009-asset-storage-and-delivery.md`.
+
+Deleting a product or a creator cascades the asset rows but leaves the uploaded
+bytes in the store. `bun run storage:sweep` reconciles the two and lists what
+nothing references; add `--delete` to remove those files.
 
 ## Plugin model
 

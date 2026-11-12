@@ -19,7 +19,8 @@
     "db:migrate": "bun --env-file=.env run --filter @biova/database db:migrate",
     "db:studio": "bun run --filter @biova/database db:studio",
     "clean": "turbo clean && rm -rf node_modules",
-    "db:seed": "bun --env-file=.env run scripts/seed.ts"
+    "db:seed": "bun --env-file=.env run scripts/seed.ts",
+    "storage:sweep": "bun --env-file=.env run scripts/storage-sweep.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
