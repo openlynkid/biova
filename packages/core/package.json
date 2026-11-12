@@ -18,7 +18,9 @@
     "@biova/payments": "workspace:*",
     "@biova/page": "workspace:*",
     "@biova/products": "workspace:*",
-    "@biova/shared": "workspace:*"
+    "@biova/shared": "workspace:*",
+    "@biova/delivery": "workspace:*",
+    "@biova/storage": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3"

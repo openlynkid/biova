@@ -64,6 +64,17 @@ export const startCheckout = createServerFn({ method: "POST" })
     };
   });
 
+export interface DownloadAsset {
+  fileName: string;
+  sizeBytes: number;
+  downloadPath: string;
+}
+
+export interface DownloadItem {
+  title: string;
+  assets: DownloadAsset[];
+}
+
 export interface OrderView {
   reference: string;
   status: string;
@@ -72,6 +83,9 @@ export interface OrderView {
   buyerEmail: string;
   paidAt: string | null;
   items: { title: string; unitPriceIdr: number }[];
+  // Only present for a paid order: the files the buyer may download, each behind
+  // a signed link. An unpaid order yields an empty list, never a link.
+  downloads: DownloadItem[];
 }
 
 // Buyer order lookup. The reference acts as the bearer credential; the page is
@@ -82,6 +96,17 @@ export const getOrder = createServerFn({ method: "GET" })
     const services = await getServices();
     const found = await services.orders.getByReference(data.reference);
     if (!found) return null;
+
+    // Delivery links exist only once the order is paid; asking for them on an
+    // unpaid order simply returns nothing.
+    const delivery = await services.delivery.listForOrder(found.order.reference);
+    const downloads = delivery.ok
+      ? delivery.value.map((item) => ({
+          title: item.title,
+          assets: item.assets.map((asset) => ({ fileName: asset.fileName, sizeBytes: asset.sizeBytes, downloadPath: asset.downloadPath })),
+        }))
+      : [];
+
     return {
       reference: found.order.reference,
       status: found.order.status,
@@ -90,5 +115,6 @@ export const getOrder = createServerFn({ method: "GET" })
       buyerEmail: found.order.buyerEmail,
       paidAt: found.order.paidAt ? found.order.paidAt.toISOString() : null,
       items: found.items.map((item) => ({ title: item.title, unitPriceIdr: item.unitPriceIdr })),
+      downloads,
     };
   });

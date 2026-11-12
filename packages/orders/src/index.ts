@@ -79,6 +79,9 @@ export interface OrderRepository {
   applyStatus(args: { orderId: string; fromStatus: OrderStatus; toStatus: OrderStatus; paidAt: Date | null }): Promise<Order | undefined>;
   listEntitlements(orderId: string): Promise<ProductEntitlement[]>;
   listEntitlementsByEmail(email: string): Promise<ProductEntitlement[]>;
+  // Used by delivery, which knows an entitlement id from a signed token but not
+  // the order it belongs to. Unscoped by design: the caller is the token check.
+  findEntitlementById(entitlementId: string): Promise<ProductEntitlement | undefined>;
 }
 
 export function createOrderRepository(db: Database): OrderRepository {
@@ -199,6 +202,11 @@ export function createOrderRepository(db: Database): OrderRepository {
         .from(productEntitlements)
         .where(eq(productEntitlements.buyerEmail, email))
         .orderBy(desc(productEntitlements.grantedAt));
+    },
+
+    async findEntitlementById(entitlementId) {
+      const [row] = await db.select().from(productEntitlements).where(eq(productEntitlements.id, entitlementId)).limit(1);
+      return row;
     },
   };
 }

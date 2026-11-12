@@ -18,6 +18,8 @@ import {
   productTitleSchema,
   productDescriptionSchema,
   productPriceSchema,
+  formatBytes,
+  type AssetView,
   type PageTheme,
 } from "@biova/shared";
 
@@ -320,3 +322,58 @@ export const reorderProducts = createServerFn({ method: "POST" })
     const result = await services.products.reorder(creator.id, data.ids);
     return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
   });
+
+// --- Product assets -------------------------------------------------------
+
+export const listProductAssets = createServerFn({ method: "GET" })
+  .validator(z.object({ productId: z.uuid() }))
+  .handler(async ({ data }): Promise<{ ok: true; data: AssetView[] } | { ok: false; error: string }> => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false, error: "not_found" };
+    const result = await services.assets.list(creator.id, data.productId);
+    return result.ok ? { ok: true, data: result.value } : { ok: false, error: result.error };
+  });
+
+// Uploads are multipart: the browser sends a FormData carrying the product id
+// and the file. The bytes are handed to the storage service, which decides where
+// they live, so no client-supplied path is ever used.
+export const uploadProductAsset = createServerFn({ method: "POST" })
+  .validator((data: FormData) => data)
+  .handler(async ({ data }): Promise<{ ok: true; data: AssetView } | { ok: false; error: string }> => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false, error: "not_found" };
+
+    const productId = String(data.get("productId") ?? "");
+    const file = data.get("file");
+    if (!(file instanceof File)) return { ok: false, error: "invalid_input" };
+
+    const result = await services.assets.add({
+      creatorId: creator.id,
+      productId,
+      fileName: file.name,
+      contentType: file.type || "application/octet-stream",
+      data: new Uint8Array(await file.arrayBuffer()),
+    });
+    return result.ok ? { ok: true, data: result.value } : { ok: false, error: result.error };
+  });
+
+export const deleteProductAsset = createServerFn({ method: "POST" })
+  .validator(z.object({ assetId: z.uuid() }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.assets.remove(creator.id, data.assetId);
+    return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
+  });
+
+export const reorderProductAssets = createServerFn({ method: "POST" })
+  .validator(z.object({ productId: z.uuid(), ids: z.array(z.uuid()).min(1).max(100) }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.assets.reorder(creator.id, data.productId, data.ids);
+    return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
+  });
+
+// Human-readable size for the upload list.
+export const assetSizeLabel = formatBytes;

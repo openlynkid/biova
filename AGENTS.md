@@ -62,7 +62,8 @@ Map before adding tables so the same concept is not created twice:
 | payment_transaction | `payment_transactions` |
 | payment_webhook_event | `payment_webhook_events` |
 | product_entitlement | `product_entitlements` |
-| creator_profile, page_theme, link_click_event, product_asset, page_view_event | not built yet |
+| product_asset | `product_assets` |
+| creator_profile, page_theme, link_click_event, page_view_event | not built yet |
 
 Note that `creators.bio` already covers part of `creator_profile`, and `pages.theme`
 covers part of `page_theme`. Extend those tables rather than creating parallel ones
@@ -76,6 +77,11 @@ Schema constraints worth knowing:
 - `pages.status` is the `page_status` enum; the values mirror `pageStatusSchema`
   in `@biova/shared`.
 - `links.url` is validated to be `http`/`https` at the service boundary.
+- `product_assets.storage_key` is unique and server-generated; it is never
+  exposed through the API. `product_assets` cascades from both `creators` and
+  `products`.
+- `product_entitlements` has a unique `(order_id, product_id)` index, so a
+  replayed webhook cannot grant a buyer the same product twice.
 
 ## Environment
 
@@ -89,6 +95,10 @@ Schema constraints worth knowing:
   `DATABASE_URL`, `BETTER_AUTH_SECRET` (32+ chars), `BETTER_AUTH_URL`.
   `CORS_ORIGINS` doubles as Better Auth's `trustedOrigins`, and
   `BETTER_AUTH_ALLOWED_HOSTS` overrides the auth host allowlist (see below).
+- Digital delivery reads `STORAGE_DIR` (uploaded product files; default
+  `.storage`, resolved relative to the workspace root), `DOWNLOAD_TOKEN_SECRET`
+  (signs download links; a local default is used when unset) and
+  `DOWNLOAD_TOKEN_TTL_SECONDS` (default 900). `.storage` is git-ignored.
 - `@biova/database` throws at import when `DATABASE_URL` is missing. Keep this
   in mind for tests and for any module that imports it eagerly.
 
@@ -97,7 +107,7 @@ Schema constraints worth knowing:
 ```bash
 bun install --frozen-lockfile   # install; bun.lock is committed
 bun run lint                    # eslint .
-bun run typecheck               # turbo typecheck, 12 tasks
+bun run typecheck               # turbo typecheck
 bun run test                    # turbo test
 bun run build                   # turbo build (web is the only builder)
 bun run db:generate             # drizzle-kit generate -> packages/database/drizzle
@@ -129,8 +139,18 @@ a build step that requires `DATABASE_URL`.
   `packages/orders`: domain packages. Each exports a repository (SQL) and a
   service (rules, returning `Result`). Products own `products` (slug unique per
   creator, price in whole rupiah) and publish through the same transition table
-  as pages. Orders own `orders`, `order_items`, `payment_transactions`,
-  `payment_webhook_events` and `product_entitlements`.
+  as pages; `packages/products/src/assets.ts` adds a second repository + service
+  for `product_assets` (upload, list, remove, reorder). Orders own `orders`,
+  `order_items`, `payment_transactions`, `payment_webhook_events` and
+  `product_entitlements`.
+- `packages/storage`: `BlobStorage` port (`put`/`get`/`remove`) plus a local
+  filesystem driver. Keys are server-generated (`<shard>/<random><ext>`); the
+  driver validates every key and confirms the resolved path stays inside the
+  root, so a caller can never choose a path.
+- `packages/delivery`: signed, time-boxed download tokens (`token.ts`) and the
+  buyer delivery read model. Reaches orders and products through injected
+  functions, so it imports neither domain. Download checks: token signature and
+  expiry, entitlement active, asset belongs to the granted product.
 - `packages/payments`: `PaymentProvider` abstraction with a Midtrans adapter
   (sha512 signature verification) and a fake provider for tests and local
   development. `core` picks the provider from the environment.
@@ -155,6 +175,15 @@ a build step that requires `DATABASE_URL`.
 - Package names use the `@biova/*` scope. Never reintroduce `openlynk` names.
 - Drizzle Kit runs under Node, where `Bun.env` is undefined. Config and scripts
   that drizzle-kit loads must read `process.env`, not `Bun.env`.
+- Turbo runs each app with its own cwd (`apps/api`, `apps/web`), so a relative
+  `STORAGE_DIR` would resolve to two different folders and a file uploaded
+  through one app would be invisible to the other. `resolveStorageRoot` in
+  `packages/core` anchors a relative path at the workspace root (the directory
+  holding `turbo.json`); an absolute path is used as given.
+- Server functions that accept a file take `FormData` as their validator input
+  (`createServerFn({ method: "POST" }).validator((data: FormData) => data)`).
+  TanStack Start passes it through without JSON serialization, so the browser can
+  upload a real `File`.
 - The Drizzle adapter for Better Auth resolves fields by the Drizzle property
   key, so property keys must equal Better Auth field names; database columns are
   snake_case.

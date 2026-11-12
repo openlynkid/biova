@@ -87,12 +87,14 @@
       "dependencies": {
         "@biova/creator": "workspace:*",
         "@biova/database": "workspace:*",
+        "@biova/delivery": "workspace:*",
         "@biova/links": "workspace:*",
         "@biova/orders": "workspace:*",
         "@biova/page": "workspace:*",
         "@biova/payments": "workspace:*",
         "@biova/products": "workspace:*",
         "@biova/shared": "workspace:*",
+        "@biova/storage": "workspace:*",
       },
       "devDependencies": {
         "typescript": "5.9.3",
@@ -123,6 +125,23 @@
       "devDependencies": {
         "@electric-sql/pglite": "0.5.16",
         "drizzle-kit": "0.31.11",
+        "typescript": "5.9.3",
+      },
+    },
+    "packages/delivery": {
+      "name": "@biova/delivery",
+      "version": "0.1.0",
+      "dependencies": {
+        "@biova/shared": "workspace:*",
+        "@biova/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@biova/creator": "workspace:*",
+        "@biova/database": "workspace:*",
+        "@biova/orders": "workspace:*",
+        "@biova/payments": "workspace:*",
+        "@biova/products": "workspace:*",
+        "@electric-sql/pglite": "0.5.16",
         "typescript": "5.9.3",
       },
     },
@@ -212,6 +231,7 @@
       "dependencies": {
         "@biova/database": "workspace:*",
         "@biova/shared": "workspace:*",
+        "@biova/storage": "workspace:*",
         "drizzle-orm": "0.45.4",
         "zod": "4.6.7",
       },
@@ -226,6 +246,16 @@
       "version": "0.1.0",
       "dependencies": {
         "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "typescript": "5.9.3",
+      },
+    },
+    "packages/storage": {
+      "name": "@biova/storage",
+      "version": "0.1.0",
+      "dependencies": {
+        "@biova/shared": "workspace:*",
       },
       "devDependencies": {
         "typescript": "5.9.3",
@@ -307,6 +337,8 @@
 
     "@biova/database": ["@biova/database@workspace:packages/database"],
 
+    "@biova/delivery": ["@biova/delivery@workspace:packages/delivery"],
+
     "@biova/links": ["@biova/links@workspace:packages/links"],
 
     "@biova/orders": ["@biova/orders@workspace:packages/orders"],
@@ -324,6 +356,8 @@
     "@biova/products": ["@biova/products@workspace:packages/products"],
 
     "@biova/shared": ["@biova/shared@workspace:packages/shared"],
+
+    "@biova/storage": ["@biova/storage@workspace:packages/storage"],
 
     "@biova/web": ["@biova/web@workspace:apps/web"],
 

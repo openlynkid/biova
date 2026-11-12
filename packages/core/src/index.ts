@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Database } from "@biova/database/types";
 import {
   createCreatorRepository,
@@ -8,20 +10,27 @@ import {
 import { createLinkRepository, createLinkService, type Link, type LinkService } from "@biova/links";
 import { createPageRepository, createPageService, type PageService } from "@biova/page";
 import {
+  createAssetRepository,
+  createAssetService,
   createProductRepository,
   createProductService,
+  type AssetService,
   type ProductService,
 } from "@biova/products";
 import { createOrderRepository, createOrderService, type OrderService } from "@biova/orders";
 import { createFakeProvider, createMidtransProvider, type PaymentProvider } from "@biova/payments";
-import { pageThemeSchema, readEnv, type PageTheme } from "@biova/shared";
+import { createDeliveryService, type DeliveryService } from "@biova/delivery";
+import { createLocalStorage, type BlobStorage } from "@biova/storage";
+import { DOWNLOAD_TOKEN_TTL_SECONDS, MAX_ASSET_BYTES, pageThemeSchema, readEnv, type PageTheme } from "@biova/shared";
 
 export interface BiovaServices {
   creators: CreatorService;
   pages: PageService;
   links: LinkService;
   products: ProductService;
+  assets: AssetService;
   orders: OrderService;
+  delivery: DeliveryService;
 }
 
 // Pick the payment provider from the environment. Midtrans is used when a
@@ -36,11 +45,39 @@ export function createPaymentProvider(env: (key: string) => string | undefined =
   return createFakeProvider({ secret: env("PAYMENT_FAKE_SECRET") ?? "local-dev-fake-secret" });
 }
 
+// A relative storage path must mean the same directory no matter which app
+// started the process: in this monorepo the API and the web server run with
+// different working directories (apps/api, apps/web), so a plain ".storage"
+// would resolve to two different folders and a file uploaded through one app
+// would be invisible to the other. Anchoring it at the workspace root keeps a
+// single store. An absolute path is used as given.
+export function resolveStorageRoot(dir: string, cwd: string = process.cwd()): string {
+  if (isAbsolute(dir)) return dir;
+  let current = resolve(cwd);
+  while (true) {
+    if (existsSync(join(current, "turbo.json"))) return join(current, dir);
+    const parent = dirname(current);
+    if (parent === current) return resolve(cwd, dir);
+    current = parent;
+  }
+}
+
+// Where uploaded product files are stored. The default keeps local development
+// working with no configuration; a deployment points STORAGE_DIR at a volume.
+export function createBlobStorage(env: (key: string) => string | undefined = readEnv): BlobStorage {
+  return createLocalStorage({
+    root: resolveStorageRoot(env("STORAGE_DIR") ?? ".storage"),
+    maxBytes: Number(env("MAX_ASSET_BYTES") ?? MAX_ASSET_BYTES),
+  });
+}
+
 // Composition root: the web app and the API both build their services here so
 // they share one set of domain rules. Only this module knows how the domains
 // are wired together.
 export interface CreateServicesOptions {
   paymentProvider?: PaymentProvider;
+  storage?: BlobStorage;
+  downloadTokenSecret?: string;
 }
 
 export function createServices(db: Database, options: CreateServicesOptions = {}): BiovaServices {
@@ -49,11 +86,17 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
   const pageRepository = createPageRepository(db);
   const productRepository = createProductRepository(db);
   const orderRepository = createOrderRepository(db);
+  const assetRepository = createAssetRepository(db);
 
   const links = createLinkService(linkRepository);
   const products = createProductService(productRepository);
   const pages = createPageService(pageRepository, (creatorId) => links.hasEnabledLink(creatorId));
   const creators = createCreatorService(creatorRepository);
+
+  const storage = options.storage ?? createBlobStorage();
+  const assets = createAssetService(assetRepository, storage, {
+    isOwnedProduct: (creatorId, productId) => products.ownsProduct(creatorId, productId),
+  });
 
   // Checkout resolves the product through this function, so the price always
   // comes from a published row owned by the creator whose slug was requested.
@@ -78,7 +121,33 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
     options.paymentProvider ?? createPaymentProvider(),
   );
 
-  return { creators, pages, links, products, orders };
+  // Delivery reads orders, entitlements and assets through injected functions,
+  // so it never imports those domains directly.
+  const delivery = createDeliveryService(
+    {
+      async findOrderByReference(reference) {
+        const found = await orders.getByReference(reference);
+        return found ? { id: found.order.id } : undefined;
+      },
+      async listOrderItems(orderId) {
+        const order = await orderRepository.findById(orderId);
+        if (!order) return [];
+        const items = await orderRepository.listItems(order.id);
+        return items.map((item) => ({ productId: item.productId, title: item.title }));
+      },
+      listEntitlementsByOrder: (orderId) => orderRepository.listEntitlements(orderId),
+      findEntitlement: (entitlementId) => orderRepository.findEntitlementById(entitlementId),
+      listAssetsByProduct: (productId) => assetRepository.listByProduct(productId),
+      findAsset: (assetId) => assetRepository.findByIdUnscoped(assetId),
+    },
+    storage,
+    {
+      secret: options.downloadTokenSecret ?? readEnv("DOWNLOAD_TOKEN_SECRET") ?? "local-dev-download-secret",
+      ttlSeconds: Number(readEnv("DOWNLOAD_TOKEN_TTL_SECONDS") ?? DOWNLOAD_TOKEN_TTL_SECONDS),
+    },
+  );
+
+  return { creators, pages, links, products, assets, orders, delivery };
 }
 
 export interface PublicProduct {

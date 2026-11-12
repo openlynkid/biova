@@ -1,5 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { formatPriceIdr } from "@biova/shared/product";
+import { formatBytes } from "@biova/shared/asset";
 import { getOrder } from "../server/checkout";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -61,7 +62,28 @@ function OrderPage() {
         {paid ? (
           <div className="access-panel">
             <strong>Your download</strong>
-            <p className="intro">The creator delivers the files for this order. Keep this link to come back to your access.</p>
+            {order.downloads.length === 0 ? (
+              <p className="intro">The creator has not attached files to this product yet. Keep this page and check back.</p>
+            ) : (
+              order.downloads.map((item) => (
+                <div className="download-group" key={item.title}>
+                  <div className="eyebrow">{item.title}</div>
+                  <ul className="rows">
+                    {item.assets.map((asset) => (
+                      <li className="row" key={asset.downloadPath}>
+                        <span className="row-icon">⤓</span>
+                        <div className="row-body">
+                          <strong>{asset.fileName}</strong>
+                          <small>{formatBytes(asset.sizeBytes)}</small>
+                        </div>
+                        <a className="button primary" href={asset.downloadPath}>Download</a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            )}
+            <p className="intro">These links expire shortly. Reopen this page to get fresh ones.</p>
           </div>
         ) : null}
       </section>

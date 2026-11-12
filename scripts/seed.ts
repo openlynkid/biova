@@ -18,8 +18,20 @@ const LINKS = [
 ];
 
 const PRODUCTS = [
-  { title: "Preset Lightroom Moody", slug: "preset-moody", priceIdr: 49_000, description: "10 preset siap pakai untuk foto sehari-hari." },
-  { title: "E-book Panduan Konten", slug: "ebook-konten", priceIdr: 89_000, description: "PDF 60 halaman tentang strategi konten." },
+  {
+    title: "Preset Lightroom Moody",
+    slug: "preset-moody",
+    priceIdr: 49_000,
+    description: "10 preset siap pakai untuk foto sehari-hari.",
+    asset: { fileName: "preset-moody.txt", contentType: "text/plain", body: "Preset Lightroom Moody — file demo Biova.\n" },
+  },
+  {
+    title: "E-book Panduan Konten",
+    slug: "ebook-konten",
+    priceIdr: 89_000,
+    description: "PDF 60 halaman tentang strategi konten.",
+    asset: { fileName: "ebook-konten.txt", contentType: "text/plain", body: "E-book Panduan Konten — file demo Biova.\n" },
+  },
 ];
 
 const services: BiovaServices = createServices(db);
@@ -63,17 +75,28 @@ async function main() {
   const existingProducts = await services.products.list(creator.id);
   for (const product of existingProducts) await services.products.remove(creator.id, product.id);
   for (const product of PRODUCTS) {
-    const result = await services.products.create({ creatorId: creator.id, ...product });
+    const { asset, ...fields } = product;
+    const result = await services.products.create({ creatorId: creator.id, ...fields });
     if (!result.ok) throw new Error(`failed to create product: ${result.error}`);
     // Products start as drafts; the demo page should show a live catalog.
     const live = await services.products.setStatus(creator.id, result.value.id, "published");
     if (!live.ok) throw new Error(`failed to publish product: ${live.error}`);
+
+    // Attach the deliverable so a paid order has something to hand the buyer.
+    const uploaded = await services.assets.add({
+      creatorId: creator.id,
+      productId: result.value.id,
+      fileName: asset.fileName,
+      contentType: asset.contentType,
+      data: new TextEncoder().encode(asset.body),
+    });
+    if (!uploaded.ok) throw new Error(`failed to attach asset: ${uploaded.error}`);
   }
 
   const published = await services.pages.setStatus(creator.id, "published");
   if (!published.ok) throw new Error(`failed to publish page: ${published.error}`);
 
-  console.log(`Seeded demo creator "${DEMO.slug}" with ${LINKS.length} links and ${PRODUCTS.length} products (published).`);
+  console.log(`Seeded demo creator "${DEMO.slug}" with ${LINKS.length} links and ${PRODUCTS.length} products (published, with files).`);
 }
 
 await main();

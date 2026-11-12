@@ -14,7 +14,8 @@
     "@biova/database": "workspace:*",
     "@biova/shared": "workspace:*",
     "drizzle-orm": "0.45.4",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "@biova/storage": "workspace:*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.16",

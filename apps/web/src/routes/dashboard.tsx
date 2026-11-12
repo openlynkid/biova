@@ -7,8 +7,10 @@ import {
   createProduct,
   deleteLink,
   deleteProduct,
+  deleteProductAsset,
   getDashboard,
   getSession,
+  listProductAssets,
   reorderLinks,
   reorderProducts,
   setPageStatus,
@@ -17,8 +19,10 @@ import {
   updatePage,
   updateProduct,
   updateProfile,
+  uploadProductAsset,
 } from "../server/dashboard";
 import { formatPriceIdr } from "@biova/shared/product";
+import { formatBytes, type AssetView } from "@biova/shared/asset";
 
 export const Route = createFileRoute("/dashboard")({
   loader: async () => ({
@@ -348,6 +352,7 @@ function ProductsEditor({ products, onError }: { products: ProductRow[]; onError
             onMove={move}
             index={index}
             run={run}
+            onError={onError}
           />
         ))}
       </ul>
@@ -392,6 +397,7 @@ function ProductRowItem({
   last,
   onMove,
   run,
+  onError,
 }: {
   product: ProductRow;
   index: number;
@@ -399,11 +405,47 @@ function ProductRowItem({
   last: boolean;
   onMove: (index: number, direction: -1 | 1) => Promise<void>;
   run: (action: () => Promise<{ ok: boolean; error?: string }>) => Promise<void>;
+  onError: (message: string | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(product.title);
   const [price, setPrice] = useState(String(product.priceIdr));
+  const [assets, setAssets] = useState<AssetView[] | null>(null);
+  const [busy, setBusy] = useState(false);
   const published = product.status === "published";
+
+  async function loadAssets() {
+    const result = await listProductAssets({ data: { productId: product.id } });
+    setAssets(result.ok ? result.data : []);
+  }
+
+  async function toggleAssets() {
+    if (assets) {
+      setAssets(null);
+      return;
+    }
+    await loadAssets();
+  }
+
+  async function upload(file: File) {
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.set("productId", product.id);
+      form.set("file", file);
+      const result = await uploadProductAsset({ data: form });
+      if (!result.ok) onError(result.error);
+      await loadAssets();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeAsset(assetId: string) {
+    const result = await deleteProductAsset({ data: { assetId } });
+    if (!result.ok) onError(result.error);
+    await loadAssets();
+  }
 
   return (
     <li className={published ? "row" : "row disabled"}>
@@ -433,11 +475,48 @@ function ProductRowItem({
         <button type="button" className="chip" onClick={() => void onMove(index, -1)} disabled={first} aria-label="Move up">↑</button>
         <button type="button" className="chip" onClick={() => void onMove(index, 1)} disabled={last} aria-label="Move down">↓</button>
         <button type="button" className="chip" onClick={() => setEditing(!editing)}>{editing ? "Close" : "Edit"}</button>
+        <button type="button" className="chip" onClick={() => void toggleAssets()}>{assets ? "Close files" : "Files"}</button>
         <button type="button" className="chip" onClick={() => void run(async () => setProductStatus({ data: { productId: product.id, status: published ? "draft" : "published" } }))}>
           {published ? "Unpublish" : "Publish"}
         </button>
         <button type="button" className="chip danger" onClick={() => void run(async () => deleteProduct({ data: { productId: product.id } }))}>Delete</button>
       </div>
+      {assets ? (
+        <div className="asset-panel">
+          <p className="intro">Files delivered to buyers after payment. They are never exposed on the public page.</p>
+          <label className="button primary as-label">
+            {busy ? "Uploading…" : "Add file"}
+            <input
+              type="file"
+              hidden
+              disabled={busy}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void upload(file);
+              }}
+            />
+          </label>
+          {assets.length > 0 ? (
+            <ul className="rows">
+              {assets.map((asset) => (
+                <li className="row" key={asset.id}>
+                  <span className="row-icon">⤓</span>
+                  <div className="row-body">
+                    <strong>{asset.fileName}</strong>
+                    <small>{formatBytes(asset.sizeBytes)} · {asset.contentType}</small>
+                  </div>
+                  <div className="row-actions">
+                    <button type="button" className="chip danger" onClick={() => void removeAsset(asset.id)}>Remove</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="intro">No files yet.</p>
+          )}
+        </div>
+      ) : null}
     </li>
   );
 }

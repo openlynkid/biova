@@ -45,6 +45,7 @@ export interface ProductRepository {
   delete(creatorId: string, productId: string): Promise<boolean>;
   setStatus(creatorId: string, productId: string, status: ProductStatus): Promise<Product | undefined>;
   isSlugAvailable(creatorId: string, slug: string, exceptProductId?: string): Promise<boolean>;
+  ownsProduct(creatorId: string, productId: string): Promise<boolean>;
   reorder(creatorId: string, orderedIds: string[]): Promise<void>;
 }
 
@@ -131,6 +132,14 @@ export function createProductRepository(db: Database): ProductRepository {
         .limit(1);
       return row === undefined;
     },
+    async ownsProduct(creatorId, productId) {
+      const [row] = await db
+        .select({ id: products.id })
+        .from(products)
+        .where(and(eq(products.creatorId, creatorId), eq(products.id, productId)))
+        .limit(1);
+      return row !== undefined;
+    },
     async reorder(creatorId, orderedIds) {
       if (orderedIds.length === 0) return;
       // Single statement: order is derived from the array position, so a
@@ -153,6 +162,7 @@ export interface ProductService {
   list(creatorId: string): Promise<Product[]>;
   listPublished(creatorId: string): Promise<Product[]>;
   hasPublishedProduct(creatorId: string): Promise<boolean>;
+  ownsProduct(creatorId: string, productId: string): Promise<boolean>;
   create(args: CreateProductArgs): Promise<Result<Product, ProductError>>;
   update(args: UpdateProductArgs): Promise<Result<Product, ProductError>>;
   remove(creatorId: string, productId: string): Promise<Result<{ id: string }, ProductError>>;
@@ -172,6 +182,10 @@ export function createProductService(repository: ProductRepository): ProductServ
 
     async hasPublishedProduct(creatorId) {
       return (await repository.countPublished(creatorId)) > 0;
+    },
+
+    ownsProduct(creatorId, productId) {
+      return repository.ownsProduct(creatorId, productId);
     },
 
     async create(args) {
@@ -230,3 +244,5 @@ export function createProductService(repository: ProductRepository): ProductServ
     },
   };
 }
+
+export * from "./assets";

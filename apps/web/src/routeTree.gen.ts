@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UsernameRouteImport } from './routes/$username'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as DownloadTokenRouteImport } from './routes/download.$token'
 import { Route as OrderReferenceRouteImport } from './routes/order.$reference'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as CheckoutUsernameProductSlugRouteImport } from './routes/checkout.$username.$productSlug'
@@ -29,6 +30,11 @@ const UsernameRoute = UsernameRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadTokenRoute = DownloadTokenRouteImport.update({
+  id: '/download/$token',
+  path: '/download/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrderReferenceRoute = OrderReferenceRouteImport.update({
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$username': typeof UsernameRoute
   '/dashboard': typeof DashboardRoute
+  '/download/$token': typeof DownloadTokenRoute
   '/order/$reference': typeof OrderReferenceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/checkout/$username/$productSlug': typeof CheckoutUsernameProductSlugRoute
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$username': typeof UsernameRoute
   '/dashboard': typeof DashboardRoute
+  '/download/$token': typeof DownloadTokenRoute
   '/order/$reference': typeof OrderReferenceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/checkout/$username/$productSlug': typeof CheckoutUsernameProductSlugRoute
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$username': typeof UsernameRoute
   '/dashboard': typeof DashboardRoute
+  '/download/$token': typeof DownloadTokenRoute
   '/order/$reference': typeof OrderReferenceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/checkout/$username/$productSlug': typeof CheckoutUsernameProductSlugRoute
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$username'
     | '/dashboard'
+    | '/download/$token'
     | '/order/$reference'
     | '/api/auth/$'
     | '/checkout/$username/$productSlug'
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$username'
     | '/dashboard'
+    | '/download/$token'
     | '/order/$reference'
     | '/api/auth/$'
     | '/checkout/$username/$productSlug'
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$username'
     | '/dashboard'
+    | '/download/$token'
     | '/order/$reference'
     | '/api/auth/$'
     | '/checkout/$username/$productSlug'
@@ -104,6 +116,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   UsernameRoute: typeof UsernameRoute
   DashboardRoute: typeof DashboardRoute
+  DownloadTokenRoute: typeof DownloadTokenRoute
   OrderReferenceRoute: typeof OrderReferenceRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   CheckoutUsernameProductSlugRoute: typeof CheckoutUsernameProductSlugRoute
@@ -130,6 +143,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/download/$token': {
+      id: '/download/$token'
+      path: '/download/$token'
+      fullPath: '/download/$token'
+      preLoaderRoute: typeof DownloadTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/order/$reference': {
@@ -160,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   UsernameRoute: UsernameRoute,
   DashboardRoute: DashboardRoute,
+  DownloadTokenRoute: DownloadTokenRoute,
   OrderReferenceRoute: OrderReferenceRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   CheckoutUsernameProductSlugRoute: CheckoutUsernameProductSlugRoute,

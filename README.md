@@ -60,8 +60,10 @@ reaches the database. See `docs/adr/0006-creator-dashboard.md`.
 - `apps/api`: Elysia HTTP adapter only. `src/app.ts` builds the injectable app;
   `src/index.ts` wires real dependencies. Keep business rules in packages, not route handlers.
 - `packages/core`: composition root that builds the domain services and exposes the public read model.
-- `packages/creator`, `packages/page`, `packages/links`, `packages/products`, `packages/orders`: domain packages (repository + service).
+- `packages/creator`, `packages/page`, `packages/links`, `packages/products`, `packages/orders`: domain packages (repository + service). Product assets (upload, list, remove, reorder) live in `packages/products` as a second repository and service.
 - `packages/payments`: payment provider abstraction with a Midtrans adapter and a fake provider for tests and local development.
+- `packages/storage`: `BlobStorage` port plus a local filesystem driver. Keys are server-generated, so no caller chooses a path.
+- `packages/delivery`: signed, time-boxed download tokens and the buyer-facing delivery read model. It reaches orders and products through injected functions.
 - `packages/plugin-sdk`: stable contracts available to first-party and third-party plugins.
 - `packages/plugin-registry`: build-time plugin catalog plus runtime activation resolver.
 - `packages/database`: Drizzle schema, connection and migrations.
@@ -96,15 +98,21 @@ never read from the request.
 | PUT | `/v1/products/:id/status` | yes | Publish, unpublish or archive a product |
 | DELETE | `/v1/products/:id` | yes | Remove a product |
 | PUT | `/v1/products/reorder` | yes | Set the product order |
+| POST | `/v1/products/:id/assets` | yes | Upload a product file (multipart `file`) |
+| GET | `/v1/products/:id/assets` | yes | List a product's files |
+| DELETE | `/v1/products/assets/:assetId` | yes | Remove a file and its bytes |
+| PUT | `/v1/products/:id/assets/reorder` | yes | Set the file order |
 | GET | `/v1/orders` | yes | List the creator's orders |
 | POST | `/v1/checkout` | no | Start a checkout for a published product |
 | GET | `/v1/orders/:reference` | no | Buyer order status (reference is the bearer token) |
+| GET | `/v1/orders/:reference/downloads` | no | Files a paid order grants, each behind a signed link |
+| GET | `/v1/downloads/:token` | no | Download a file (signed token is the only credential) |
 | POST | `/v1/webhooks/:provider` | no | Payment gateway callback (signature verified) |
 | GET | `/v1/public/:slug` | no | Published page read model |
 
 Errors are stable codes (`unauthorized`, `invalid_input`, `not_found`,
-`slug_taken`, `invalid_transition`, `not_publishable`, `rate_limited`,
-`internal_error`). Authenticated requests are rate limited per user; set
+`slug_taken`, `invalid_transition`, `not_publishable`, `too_large`,
+`invalid_token`, `unavailable`, `rate_limited`, `internal_error`). Authenticated requests are rate limited per user; set
 `CORS_ORIGINS` to the comma-separated list of allowed browser origins.
 
 ## Public page
@@ -135,6 +143,22 @@ provider is used for local development and tests (it still requires
 `POST /v1/webhooks/:provider`; the signature is verified before anything is
 recorded, and the amount is checked against the stored order. See
 `docs/adr/0008-checkout-and-payments.md`.
+
+## Digital delivery
+
+A creator attaches files to a product from the dashboard (`Files` on a product
+row). Uploads are multipart and the bytes are written under `STORAGE_DIR` with a
+server-generated key; the original name is kept for display only. Files are never
+listed on the public page.
+
+Once an order is paid, `/order/:reference` lists the files the buyer may
+download, each behind a signed link that expires after `DOWNLOAD_TOKEN_TTL_SECONDS`
+(15 minutes by default). The link is an HMAC over the entitlement and asset ids,
+so it cannot be forged or edited to point at another buyer's file, and it stops
+working on its own. Downloads re-check that the entitlement is active and that
+the asset belongs to the granted product; revoking an entitlement stops new
+downloads immediately. The storage key never appears in a URL or a response. See
+`docs/adr/0009-asset-storage-and-delivery.md`.
 
 ## Plugin model
 

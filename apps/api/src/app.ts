@@ -29,6 +29,10 @@ const STATUS_BY_ERROR: Record<string, number> = {
   amount_mismatch: 409,
   invalid_signature: 401,
   payment_unavailable: 502,
+  too_large: 413,
+  storage_unavailable: 503,
+  invalid_token: 401,
+  unavailable: 404,
 };
 
 function errorResponse(set: { status?: number | string }, error: string) {
@@ -333,6 +337,97 @@ export function createApp(deps: AppDeps) {
       const result = await auth.services.products.reorder(auth.creator.id, ids);
       if (!result.ok) return errorResponse(set, result.error);
       return { ids: result.value.ids };
+    })
+
+    // Product assets. Uploads are multipart; the file bytes are buffered here and
+    // handed to the storage service, which writes them under a server-generated
+    // key. The route never trusts a client path.
+    .post("/v1/products/:id/assets", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+
+      let form: FormData;
+      try {
+        form = await request.formData();
+      } catch {
+        return errorResponse(set, "invalid_input");
+      }
+      const file = form.get("file");
+      if (!(file instanceof File)) return errorResponse(set, "invalid_input");
+
+      const result = await auth.services.assets.add({
+        creatorId: auth.creator.id,
+        productId: params.id,
+        fileName: file.name,
+        contentType: file.type || "application/octet-stream",
+        data: new Uint8Array(await file.arrayBuffer()),
+      });
+      if (!result.ok) return errorResponse(set, result.error);
+      set.status = 201;
+      return { asset: result.value };
+    })
+    .get("/v1/products/:id/assets", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const result = await auth.services.assets.list(auth.creator.id, params.id);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { assets: result.value };
+    })
+    .delete("/v1/products/assets/:assetId", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const result = await auth.services.assets.remove(auth.creator.id, params.assetId);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { id: result.value.id };
+    })
+    .put("/v1/products/:id/assets/reorder", async ({ request, params, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as { ids?: unknown };
+      const ids = Array.isArray(payload.ids) ? payload.ids.map(String) : [];
+      const result = await auth.services.assets.reorder(auth.creator.id, params.id, ids);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { ids: result.value.ids };
+    })
+    // Buyer delivery listing. The order reference is the bearer credential, and
+    // the service returns nothing unless the order is paid and has entitlements.
+    .get("/v1/orders/:reference/downloads", async ({ params, set }) => {
+      const services = await deps.getServices();
+      const result = await services.delivery.listForOrder(params.reference);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { items: result.value };
+    })
+    // Signed download. The token is the only credential; the service checks the
+    // signature, the entitlement, and that the asset belongs to the product.
+    .get("/v1/downloads/:token", async ({ params, set }) => {
+      const services = await deps.getServices();
+      const result = await services.delivery.openDownload(params.token);
+      if (!result.ok) return errorResponse(set, result.error);
+      // Copy into a fresh ArrayBuffer so the body is a plain BlobPart.
+      const bytes = new Uint8Array(result.value.data.byteLength);
+      bytes.set(result.value.data);
+      return new Response(new Blob([bytes]), {
+        headers: {
+          "content-type": result.value.contentType,
+          "content-disposition": `attachment; filename="${encodeURIComponent(result.value.fileName)}"`,
+        },
+      });
     })
 
     // Checkout is public: a visitor who is not signed in must be able to buy.

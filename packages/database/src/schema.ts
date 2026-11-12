@@ -172,6 +172,25 @@ export const productEntitlements = pgTable("product_entitlements", {
   index("product_entitlements_buyer_idx").on(table.buyerEmail),
 ]);
 
+// A file a creator attaches to a product. `storage_key` is an opaque,
+// server-generated identifier for the bytes in the storage backend; the original
+// file name is kept only for display and is never used as a path, so a crafted
+// name cannot escape the storage root.
+export const productAssets = pgTable("product_assets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id, { onDelete: "cascade" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  contentType: varchar("content_type", { length: 128 }).notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  storageKey: varchar("storage_key", { length: 200 }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  ...timestamps(),
+}, (table) => [
+  uniqueIndex("product_assets_storage_key_uq").on(table.storageKey),
+  index("product_assets_product_sort_idx").on(table.productId, table.sortOrder),
+]);
+
 export const plugins = pgTable("plugins", {
   id: varchar("id", { length: 100 }).primaryKey(),
   name: varchar("name", { length: 120 }).notNull(),
