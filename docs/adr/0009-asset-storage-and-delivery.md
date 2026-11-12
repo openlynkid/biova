@@ -84,3 +84,8 @@ guessed or shared indefinitely.
 - Download tokens are stateless, so there is no server-side list of issued links
   to revoke individually; revocation works through the entitlement, which is the
   row that grants access in the first place.
+- Deleting an asset through the API removes its bytes as well, but deleting a
+  whole product or creator cascades the `product_assets` rows in the database and
+  leaves the bytes behind. A background sweep that reconciles the store against
+  the rows is the intended follow-up; it is out of scope here because the rows
+  are the source of truth and an orphaned blob is never reachable without one.
