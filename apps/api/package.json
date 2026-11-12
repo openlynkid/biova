@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": { "dev": "bun --watch src/index.ts", "start": "bun src/index.ts", "typecheck": "tsc --noEmit", "test": "bun test" },
-  "dependencies": { "@biova/plugin-registry": "workspace:*", "elysia": "1.4.30" },
+  "dependencies": { "@biova/auth": "workspace:*", "@biova/database": "workspace:*", "@biova/plugin-registry": "workspace:*", "@biova/shared": "workspace:*", "drizzle-orm": "0.45.4", "elysia": "1.4.30", "zod": "4.6.7" },
   "devDependencies": { "typescript": "5.9.3" }
 }

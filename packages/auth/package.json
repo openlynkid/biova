@@ -1,0 +1,1 @@
+{ "name": "@biova/auth", "version": "0.1.0", "private": true, "type": "module", "exports": { ".": "./src/index.ts" }, "scripts": { "typecheck": "tsc --noEmit", "test": "bun test --pass-with-no-tests" }, "dependencies": { "@biova/database": "workspace:*", "@biova/shared": "workspace:*", "better-auth": "1.7.20" }, "devDependencies": { "typescript": "5.9.3" } }

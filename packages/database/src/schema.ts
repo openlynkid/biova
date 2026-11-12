@@ -1,4 +1,7 @@
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { user } from "./auth-schema";
+
+export * from "./auth-schema";
 
 const timestamps = () => ({
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -7,7 +10,7 @@ const timestamps = () => ({
 
 export const creators = pgTable("creators", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: text("user_id").notNull(), // Reference auth user id; add FK after auth schema is selected.
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   slug: varchar("slug", { length: 48 }).notNull(),
   displayName: varchar("display_name", { length: 120 }).notNull(),
   bio: varchar("bio", { length: 500 }),

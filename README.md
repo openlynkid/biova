@@ -13,7 +13,7 @@ Bun-native monorepo foundation for Biova: a modular creator link-in-bio platform
 - PostgreSQL + Drizzle ORM 0.45.4 + postgres.js 3.4.7
 - Zod 4.6.7
 
-Versions are pinned intentionally. Re-check peer dependencies and run the validation commands before production. `bun.lock` is committed; CI and the Dockerfile install with `bun install --frozen-lockfile`. `@tanstack/react-router` is pinned to 1.170.46 because that is the version `@tanstack/react-start` 1.169.5 depends on (a matching `1.169.5` was never published). Better Auth is intentionally deferred until the auth schema and adapter are wired and tested.
+Versions are pinned intentionally. Re-check peer dependencies and run the validation commands before production. `bun.lock` is committed; CI and the Dockerfile install with `bun install --frozen-lockfile`. `@tanstack/react-router` is pinned to 1.170.46 because that is the version `@tanstack/react-start` 1.169.5 depends on (a matching `1.169.5` was never published).
 
 ## Quick start
 
@@ -41,6 +41,7 @@ bun run db:migrate
 - `packages/plugin-sdk`: stable contracts available to first-party and third-party plugins.
 - `packages/plugin-registry`: build-time plugin catalog plus runtime activation resolver.
 - `packages/database`: Drizzle schema, connection and migrations.
+- `packages/auth`: Better Auth instance shared by the web app and the API.
 - `packages/shared`: framework-agnostic shared primitives.
 - `plugins/*`: independently versioned plugin packages. They are compiled into the host application; runtime activation controls availability per creator.
 
@@ -50,13 +51,27 @@ bun run db:migrate
 2. Runtime activation: read the creator's installation state from the database and expose only enabled capabilities.
 3. External plugins: do not load arbitrary npm packages or execute uploaded JavaScript inside the Bun process. Future external plugins must use a signed artifact pipeline plus isolated workers/sandbox and capability-scoped APIs.
 
+## Authentication
+
+Better Auth 1.7.20 with the Drizzle adapter (`pg`). The auth instance lives in `packages/auth` so the web app and the API share one configuration.
+
+- Tables: `user`, `session`, `account`, `verification`, defined in `packages/database/src/auth-schema.ts`. Property keys match Better Auth field names; database columns are snake_case.
+- Routes: the web app mounts the Better Auth handler at `/api/auth/*` (`apps/web/src/routes/api/auth/$.ts`).
+- Session policy: `sessionPolicy` in `packages/shared` sets a 7-day expiry, a 1-day update age, and a 5-minute cookie cache. Better Auth reads `expiresIn`/`updateAge` in seconds.
+- Email and password sign-in is enabled. Social providers and email verification are not configured yet.
+- The API exposes `GET /v1/session`, which returns the current user and session or `401`.
+
+Required environment variables: `DATABASE_URL`, `BETTER_AUTH_SECRET` (at least 32 characters), `BETTER_AUTH_URL`. See `.env.example`.
+
+Schema changes flow through Drizzle Kit: `bun run db:generate` writes SQL to `packages/database/drizzle`, then `bun run db:migrate` applies it and verifies the four auth tables exist.
+
 ## Validation
 
 The foundation passes `bun run typecheck`, `bun run test` and `bun run build`. Fixes applied while validating:
 
 - `@biova/plugin-social-links` exported `./src/index.ts` while the file is `src/index.tsx`; the export path was corrected.
 - `PageBlockDefinition` is generic, so a concrete block was not assignable to `BiovaPlugin.pageBlocks`. The SDK now exposes `ErasedPageBlockDefinition` for the registry boundary.
-- `@biova/api` had no tests, so `bun test` failed the workspace; the Elysia app is exported and covered by smoke tests. `@biova/web` uses `bun test --pass-with-no-tests` until web tests exist.
+- `@biova/api` had no tests, so `bun test` failed the workspace; the Elysia app is exported and covered by smoke tests. `@biova/web` covers the shared session policy; the auth flow is exercised against a real PostgreSQL instance.
 
 ## Important implementation notes
 

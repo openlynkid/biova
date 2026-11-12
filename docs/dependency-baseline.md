@@ -13,7 +13,8 @@
 | Drizzle ORM | 0.45.4 | Stable line, avoid RC for production foundation |
 | drizzle-kit | 0.31.11 | Migration tooling |
 | postgres | 3.4.7 | postgres.js driver |
-| Better Auth | 1.7.20 | Planned, not installed in this foundation; add with its Drizzle schema and session policy in the auth milestone |
+| Better Auth | 1.7.20 | Installed with the Drizzle adapter (`pg`); auth schema in `packages/database`, instance in `packages/auth` |
+| @better-auth/drizzle-adapter | 1.7.20 | Installed transitively by `better-auth`; use `better-auth/adapters/drizzle` |
 | Zod | 4.6.7 | Shared validation |
 | Turborepo | 2.11.11 | Task orchestration |
 
