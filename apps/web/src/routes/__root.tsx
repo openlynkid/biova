@@ -6,7 +6,7 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Openlynk — Your space, your rules" },
+      { title: "Biova — Your space, your rules" },
       { name: "description", content: "A modular home for your creator identity, content and commerce." },
     ],
   }),

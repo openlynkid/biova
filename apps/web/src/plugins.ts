@@ -1,5 +1,5 @@
-import { createPluginRegistry, type PluginInstallationState } from "@openlynk/plugin-registry";
-import { socialLinksPlugin } from "@openlynk/plugin-social-links";
+import { createPluginRegistry, type PluginInstallationState } from "@biova/plugin-registry";
+import { socialLinksPlugin } from "@biova/plugin-social-links";
 
 // Build-time allowlist: adding a package here requires a new build/deployment.
 export const pluginRegistry = createPluginRegistry([socialLinksPlugin]);

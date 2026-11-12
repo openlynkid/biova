@@ -1,8 +1,8 @@
 {
-  "name": "@openlynk/api",
+  "name": "@biova/api",
   "private": true,
   "type": "module",
   "scripts": { "dev": "bun --watch src/index.ts", "start": "bun src/index.ts", "typecheck": "tsc --noEmit", "test": "bun test" },
-  "dependencies": { "@openlynk/plugin-registry": "workspace:*", "elysia": "1.4.30" },
+  "dependencies": { "@biova/plugin-registry": "workspace:*", "elysia": "1.4.30" },
   "devDependencies": { "typescript": "5.9.3" }
 }

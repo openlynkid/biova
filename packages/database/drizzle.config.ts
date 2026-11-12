@@ -4,7 +4,7 @@ export default defineConfig({
   schema: "./src/schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
-  dbCredentials: { url: Bun.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/openlynk" },
+  dbCredentials: { url: Bun.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/biova" },
   strict: true,
   verbose: true,
 });

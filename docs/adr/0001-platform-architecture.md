@@ -1,11 +1,11 @@
-# ADR-0001: Openlynk platform architecture
+# ADR-0001: Biova platform architecture
 
 - Status: Accepted
 - Date: 2026-11-12
 
 ## Context
 
-Openlynk is a creator link-in-bio and commerce platform. Creators compose a public mini-site from platform primitives and optional plugins. The platform must support first-party plugins initially and a reviewed third-party ecosystem later. The selected runtime is Bun, not Node.js.
+Biova is a creator link-in-bio and commerce platform. Creators compose a public mini-site from platform primitives and optional plugins. The platform must support first-party plugins initially and a reviewed third-party ecosystem later. The selected runtime is Bun, not Node.js.
 
 ## Decisions
 

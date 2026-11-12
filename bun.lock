@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "openlynk",
+      "name": "biova",
       "devDependencies": {
         "@types/bun": "1.4.4",
         "@types/node": "^22.19.0",
@@ -14,9 +14,9 @@
       },
     },
     "apps/api": {
-      "name": "@openlynk/api",
+      "name": "@biova/api",
       "dependencies": {
-        "@openlynk/plugin-registry": "workspace:*",
+        "@biova/plugin-registry": "workspace:*",
         "elysia": "1.4.30",
       },
       "devDependencies": {
@@ -24,10 +24,10 @@
       },
     },
     "apps/web": {
-      "name": "@openlynk/web",
+      "name": "@biova/web",
       "dependencies": {
-        "@openlynk/plugin-registry": "workspace:*",
-        "@openlynk/plugin-social-links": "workspace:*",
+        "@biova/plugin-registry": "workspace:*",
+        "@biova/plugin-social-links": "workspace:*",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
         "react": "19.3.0",
@@ -42,10 +42,10 @@
       },
     },
     "packages/config-ts": {
-      "name": "@openlynk/config-ts",
+      "name": "@biova/config-ts",
     },
     "packages/database": {
-      "name": "@openlynk/database",
+      "name": "@biova/database",
       "version": "0.1.0",
       "dependencies": {
         "drizzle-orm": "0.45.4",
@@ -57,17 +57,17 @@
       },
     },
     "packages/plugin-registry": {
-      "name": "@openlynk/plugin-registry",
+      "name": "@biova/plugin-registry",
       "version": "0.1.0",
       "dependencies": {
-        "@openlynk/plugin-sdk": "workspace:*",
+        "@biova/plugin-sdk": "workspace:*",
       },
       "devDependencies": {
         "typescript": "5.9.3",
       },
     },
     "packages/plugin-sdk": {
-      "name": "@openlynk/plugin-sdk",
+      "name": "@biova/plugin-sdk",
       "version": "0.1.0",
       "devDependencies": {
         "@types/react": "^19.2.7",
@@ -79,7 +79,7 @@
       },
     },
     "packages/shared": {
-      "name": "@openlynk/shared",
+      "name": "@biova/shared",
       "version": "0.1.0",
       "dependencies": {
         "zod": "4.6.7",
@@ -89,10 +89,10 @@
       },
     },
     "plugins/social-links": {
-      "name": "@openlynk/plugin-social-links",
+      "name": "@biova/plugin-social-links",
       "version": "0.1.0",
       "dependencies": {
-        "@openlynk/plugin-sdk": "workspace:*",
+        "@biova/plugin-sdk": "workspace:*",
         "react": "19.3.0",
       },
       "devDependencies": {
@@ -133,6 +133,22 @@
     "@babel/traverse": ["@babel/traverse@7.29.14", "", { "dependencies": { "@babel/code-frame": "^7.29.7", "@babel/generator": "^7.29.14", "@babel/helper-globals": "^7.29.7", "@babel/parser": "^7.29.14", "@babel/template": "^7.29.7", "@babel/types": "^7.29.14", "debug": "^4.3.1" } }, "sha512-RAdQJrBgmIH1FWvN0X+1hoDxzMzlP4cv/1Zi4dn4tG1H0cTb+rw7CzUxQJhp1f4ANd8j5vH3fy8BAWFGkBDEsA=="],
 
     "@babel/types": ["@babel/types@7.29.14", "", { "dependencies": { "@babel/helper-string-parser": "^7.29.14", "@babel/helper-validator-identifier": "^7.29.7" } }, "sha512-UjI/dKmwJwT9pOszJitq2G6EObZPnsZUfdCr92z2TlF3EZK9J3EdfOKUrCzHl6wFthbzwhzl1Soc/UIwxRiq6w=="],
+
+    "@biova/api": ["@biova/api@workspace:apps/api"],
+
+    "@biova/config-ts": ["@biova/config-ts@workspace:packages/config-ts"],
+
+    "@biova/database": ["@biova/database@workspace:packages/database"],
+
+    "@biova/plugin-registry": ["@biova/plugin-registry@workspace:packages/plugin-registry"],
+
+    "@biova/plugin-sdk": ["@biova/plugin-sdk@workspace:packages/plugin-sdk"],
+
+    "@biova/plugin-social-links": ["@biova/plugin-social-links@workspace:plugins/social-links"],
+
+    "@biova/shared": ["@biova/shared@workspace:packages/shared"],
+
+    "@biova/web": ["@biova/web@workspace:apps/web"],
 
     "@borewit/text-codec": ["@borewit/text-codec@0.2.3", "", {}, "sha512-49CycTz1aAZmvFcwkeFyhud1HUmRIB5Tabf7ALV+VA4Iu85MTfz2cUwzPagMFAdVBvrWdkCxG67I30tUwwpKsw=="],
 
@@ -219,22 +235,6 @@
     "@oozcitak/url": ["@oozcitak/url@3.0.0", "", { "dependencies": { "@oozcitak/infra": "^2.0.2", "@oozcitak/util": "^10.0.0" } }, "sha512-ZKfET8Ak1wsLAiLWNfFkZc/BraDccuTJKR6svTYc7sVjbR+Iu0vtXdiDMY4o6jaFl5TW2TlS7jbLl4VovtAJWQ=="],
 
     "@oozcitak/util": ["@oozcitak/util@10.0.0", "", {}, "sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA=="],
-
-    "@openlynk/api": ["@openlynk/api@workspace:apps/api"],
-
-    "@openlynk/config-ts": ["@openlynk/config-ts@workspace:packages/config-ts"],
-
-    "@openlynk/database": ["@openlynk/database@workspace:packages/database"],
-
-    "@openlynk/plugin-registry": ["@openlynk/plugin-registry@workspace:packages/plugin-registry"],
-
-    "@openlynk/plugin-sdk": ["@openlynk/plugin-sdk@workspace:packages/plugin-sdk"],
-
-    "@openlynk/plugin-social-links": ["@openlynk/plugin-social-links@workspace:plugins/social-links"],
-
-    "@openlynk/shared": ["@openlynk/shared@workspace:packages/shared"],
-
-    "@openlynk/web": ["@openlynk/web@workspace:apps/web"],
 
     "@oxc-project/types": ["@oxc-project/types@0.156.0", "", {}, "sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw=="],
 

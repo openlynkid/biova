@@ -1,6 +1,6 @@
-# Openlynk Foundation
+# Biova Foundation
 
-Bun-native monorepo foundation for Openlynk: a modular creator link-in-bio platform with a hybrid plugin system.
+Bun-native monorepo foundation for Biova: a modular creator link-in-bio platform with a hybrid plugin system.
 
 ## Stack baseline
 
@@ -54,9 +54,9 @@ bun run db:migrate
 
 The foundation passes `bun run typecheck`, `bun run test` and `bun run build`. Fixes applied while validating:
 
-- `@openlynk/plugin-social-links` exported `./src/index.ts` while the file is `src/index.tsx`; the export path was corrected.
-- `PageBlockDefinition` is generic, so a concrete block was not assignable to `OpenlynkPlugin.pageBlocks`. The SDK now exposes `ErasedPageBlockDefinition` for the registry boundary.
-- `@openlynk/api` had no tests, so `bun test` failed the workspace; the Elysia app is exported and covered by smoke tests. `@openlynk/web` uses `bun test --pass-with-no-tests` until web tests exist.
+- `@biova/plugin-social-links` exported `./src/index.ts` while the file is `src/index.tsx`; the export path was corrected.
+- `PageBlockDefinition` is generic, so a concrete block was not assignable to `BiovaPlugin.pageBlocks`. The SDK now exposes `ErasedPageBlockDefinition` for the registry boundary.
+- `@biova/api` had no tests, so `bun test` failed the workspace; the Elysia app is exported and covered by smoke tests. `@biova/web` uses `bun test --pass-with-no-tests` until web tests exist.
 
 ## Important implementation notes
 

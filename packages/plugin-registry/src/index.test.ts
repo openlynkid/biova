@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createPluginRegistry } from "./index";
-import type { OpenlynkPlugin } from "@openlynk/plugin-sdk";
+import type { BiovaPlugin } from "@biova/plugin-sdk";
 
-const plugin: OpenlynkPlugin = { manifest: { id: "sample", name: "Sample", version: "1.0.0", description: "test", compatibility: { sdk: "^0.1.0", core: "^0.1.0" }, permissions: [], extensions: {} } };
+const plugin: BiovaPlugin = { manifest: { id: "sample", name: "Sample", version: "1.0.0", description: "test", compatibility: { sdk: "^0.1.0", core: "^0.1.0" }, permissions: [], extensions: {} } };
 
 describe("plugin registry", () => {
   test("registers and resolves only enabled creator installations", () => {

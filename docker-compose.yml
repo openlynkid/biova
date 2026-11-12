@@ -2,13 +2,13 @@ services:
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_DB: openlynk
+      POSTGRES_DB: biova
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports: ["5432:5432"]
-    volumes: ["openlynk-postgres:/var/lib/postgresql/data"]
+    volumes: ["biova-postgres:/var/lib/postgresql/data"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d openlynk"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d biova"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -16,7 +16,7 @@ services:
     image: redis:8-alpine
     ports: ["6379:6379"]
     command: ["redis-server", "--appendonly", "yes"]
-    volumes: ["openlynk-redis:/data"]
+    volumes: ["biova-redis:/data"]
 volumes:
-  openlynk-postgres:
-  openlynk-redis:
+  biova-postgres:
+  biova-redis:

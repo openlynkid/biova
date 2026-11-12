@@ -1,11 +1,11 @@
-import type { OpenlynkPlugin, PageBlockProps } from "@openlynk/plugin-sdk";
+import type { BiovaPlugin, PageBlockProps } from "@biova/plugin-sdk";
 
 type SocialLink = { label: string; url: string };
 function SocialLinksBlock({ config }: PageBlockProps<{ links: SocialLink[] }>) {
   return <div className="social-links-block">{config.links.map((link) => <a key={link.url} href={link.url} target="_blank" rel="noreferrer">{link.label} ↗</a>)}</div>;
 }
 
-export const socialLinksPlugin: OpenlynkPlugin = {
+export const socialLinksPlugin: BiovaPlugin = {
   manifest: {
     id: "social-links",
     name: "Social Links",

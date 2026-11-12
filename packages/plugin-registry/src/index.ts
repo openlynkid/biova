@@ -1,4 +1,4 @@
-import type { OpenlynkPlugin, PluginPermission } from "@openlynk/plugin-sdk";
+import type { BiovaPlugin, PluginPermission } from "@biova/plugin-sdk";
 
 export interface PluginInstallationState {
   creatorId: string;
@@ -8,8 +8,8 @@ export interface PluginInstallationState {
   grantedPermissions: PluginPermission[];
 }
 
-export function createPluginRegistry(plugins: OpenlynkPlugin[]) {
-  const byId = new Map<string, OpenlynkPlugin>();
+export function createPluginRegistry(plugins: BiovaPlugin[]) {
+  const byId = new Map<string, BiovaPlugin>();
   for (const plugin of plugins) {
     if (byId.has(plugin.manifest.id)) throw new Error(`Duplicate plugin id: ${plugin.manifest.id}`);
     byId.set(plugin.manifest.id, plugin);

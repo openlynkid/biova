@@ -44,7 +44,7 @@ export interface PluginContext {
   hasPermission(permission: PluginPermission): boolean;
 }
 
-export interface OpenlynkPlugin {
+export interface BiovaPlugin {
   manifest: PluginManifest;
   pageBlocks?: ErasedPageBlockDefinition[];
   activate?(context: PluginContext): Promise<void> | void;

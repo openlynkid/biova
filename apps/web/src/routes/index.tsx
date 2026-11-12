@@ -7,7 +7,7 @@ function HomePage() {
   const plugins = getEnabledPlugins("demo-creator");
   return (
     <main className="shell">
-      <nav className="nav"><a className="brand" href="/">openlynk<span>·</span></a><span className="nav-label">CREATOR PLATFORM</span></nav>
+      <nav className="nav"><a className="brand" href="/">biova<span>·</span></a><span className="nav-label">CREATOR PLATFORM</span></nav>
       <section className="hero">
         <div className="eyebrow"><span className="pulse" /> MODULAR CREATOR PLATFORM</div>
         <h1>Your space.<br /><em>Your rules.</em></h1>
@@ -18,7 +18,7 @@ function HomePage() {
         <div className="section-heading"><div><div className="eyebrow">EXTEND YOUR SPACE</div><h2>One platform. Modular by design.</h2></div><span className="count">{plugins.length} PLUGIN LOADED</span></div>
         <div className="plugin-grid">{plugins.map((plugin) => <article className="plugin-card" key={plugin.manifest.id}><div className="plugin-icon">{plugin.manifest.icon ?? "◇"}</div><div><h3>{plugin.manifest.name}</h3><p>{plugin.manifest.description}</p></div><span className="status">READY</span></article>)}</div>
       </section>
-      <footer><span>OPENLYNK FOUNDATION</span><span>BUN · TANSTACK START · ELYSIA</span></footer>
+      <footer><span>BIOVA FOUNDATION</span><span>BUN · TANSTACK START · ELYSIA</span></footer>
     </main>
   );
 }
