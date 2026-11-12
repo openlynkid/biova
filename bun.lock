@@ -109,6 +109,7 @@
       "name": "@biova/database",
       "version": "0.1.0",
       "dependencies": {
+        "@biova/shared": "workspace:*",
         "drizzle-orm": "0.45.4",
         "postgres": "3.4.7",
       },

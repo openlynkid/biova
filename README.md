@@ -32,9 +32,13 @@ bun run dev
 Run PostgreSQL locally, then:
 
 ```bash
+set -a && . ./.env && set +a   # turbo runs in the package dir, so export first
 bun run db:generate
 bun run db:migrate
+bun run db:seed                # optional: demo creator "demo" with a published page
 ```
+
+With the demo data seeded, the public page is at http://localhost:3000/demo.
 
 ## Workspace boundaries
 

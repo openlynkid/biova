@@ -91,7 +91,12 @@ bun run test                    # turbo test
 bun run build                   # turbo build (web is the only builder)
 bun run db:generate             # drizzle-kit generate -> packages/database/drizzle
 bun run db:migrate              # apply migrations + assert auth tables exist
+bun run db:seed                 # dev demo data (creator "demo", published page)
 ```
+
+`bun run db:migrate` and `bun run db:seed` read `DATABASE_URL`. Because turbo
+changes the working directory to the package, export the env first:
+`set -a && . ./.env && set +a`.
 
 `bun run lint`, `bun run typecheck`, `bun run test` and `bun run build` all pass
 without any environment variables set; CI runs exactly these four with no env.
@@ -135,6 +140,13 @@ a build step that requires `DATABASE_URL`.
 - Better Auth's own migrator supports Kysely only; schema changes go through
   Drizzle Kit. `packages/database/src/migrate.ts` applies migrations and then
   asserts the four auth tables exist.
+- Never read `Bun.env` directly in code that can run under Node. Vite's dev SSR
+  worker and drizzle-kit run on Node, where the `Bun` global is undefined and the
+  app crashes with `ReferenceError: Bun is not defined`. Use `readEnv(key)` from
+  `@biova/shared`, which checks the Bun global and falls back to `process.env`.
+- `apps/web/vite.config.ts` sets `server.allowedHosts` for the dev tunnels. Vite
+  answers `403` for an unknown `Host` header; add the tunnel domain there when
+  exposing the dev server, and keep the production build strict.
 - Import `@biova/auth` lazily in the API so health/metadata endpoints boot
   without a database. Import `@biova/database/types` (not `@biova/database`) when
   only the `Database` type is needed, so no `DATABASE_URL` check runs.

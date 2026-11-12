@@ -1,5 +1,5 @@
 import { createServices, type BiovaServices } from "@biova/core";
-import { createRateLimiter } from "@biova/shared";
+import { createRateLimiter, readEnv } from "@biova/shared";
 import { createApp } from "./app";
 
 // Everything that touches the database is loaded lazily so the API can boot and
@@ -16,7 +16,7 @@ async function getSessionUser(headers: Headers) {
   return session ? { id: session.user.id } : null;
 }
 
-const allowedOrigins = (Bun.env.CORS_ORIGINS ?? "http://localhost:3000")
+const allowedOrigins = (readEnv("CORS_ORIGINS") ?? "http://localhost:3000")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -29,6 +29,6 @@ export const app = createApp({
 });
 
 if (import.meta.main) {
-  app.listen(Number(Bun.env.PORT ?? 3001));
+  app.listen(Number(readEnv("PORT") ?? 3001));
   console.log(`Biova API listening on ${app.server?.hostname}:${app.server?.port}`);
 }

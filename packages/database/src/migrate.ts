@@ -5,9 +5,10 @@ import postgres from "postgres";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
+import { readEnv } from "@biova/shared";
 
 const requiredAuthTables = ["user", "session", "account", "verification"];
-const url = Bun.env.DATABASE_URL;
+const url = readEnv("DATABASE_URL");
 if (!url) throw new Error("DATABASE_URL is required");
 
 const client = postgres(url, { max: 1, prepare: false });
