@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { canTransitionPage, createCreatorSchema, createLinkSchema, creatorSlugSchema, linkUrlSchema, pageThemeSchema } from "./index";
+import {
+  canTransitionPage,
+  canTransitionProduct,
+  createCreatorSchema,
+  createLinkSchema,
+  createProductSchema,
+  creatorSlugSchema,
+  formatPriceIdr,
+  linkUrlSchema,
+  pageThemeSchema,
+  productSlugSchema,
+} from "./index";
 import { createRateLimiter } from "./rate-limit";
 
 describe("creator slug", () => {
@@ -60,6 +71,35 @@ describe("page transitions", () => {
     for (const value of ["red", "#12345", "url(https://evil.test/x)", "var(--x)", "#fff;color:red"]) {
       expect(pageThemeSchema.safeParse({ accent: value }).success).toBe(false);
     }
+  });
+});
+
+describe("product input", () => {
+  test("accepts a well formed product and trims text", () => {
+    const parsed = createProductSchema.safeParse({ title: "  E-book  ", slug: "ebook", priceIdr: 49_000 });
+    expect(parsed.success && parsed.data.title).toBe("E-book");
+    expect(createProductSchema.safeParse({ title: "E-book", slug: "ebook", priceIdr: 0 }).success).toBe(true);
+  });
+
+  test("rejects non-http slugs and out-of-range prices", () => {
+    for (const slug of ["Bad Slug", "-x", "x-", "UP", "a b"]) {
+      expect(productSlugSchema.safeParse(slug).success).toBe(false);
+    }
+    for (const priceIdr of [-1, 1.5, 100_000_001, Number.NaN]) {
+      expect(createProductSchema.safeParse({ title: "T", slug: "t", priceIdr }).success).toBe(false);
+    }
+  });
+
+  test("only allows the documented status edges", () => {
+    expect(canTransitionProduct("draft", "published")).toBe(true);
+    expect(canTransitionProduct("published", "archived")).toBe(true);
+    expect(canTransitionProduct("archived", "draft")).toBe(true);
+    expect(canTransitionProduct("archived", "published")).toBe(false);
+  });
+
+  test("formats whole rupiah without decimals", () => {
+    expect(formatPriceIdr(0)).toBe("Rp0");
+    expect(formatPriceIdr(49_000)).toBe("Rp49.000");
   });
 });
 

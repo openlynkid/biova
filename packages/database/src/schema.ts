@@ -15,6 +15,10 @@ const timestamps = () => ({
 // the page domain service; the enum only rejects unknown states at the boundary.
 export const pageStatus = pgEnum("page_status", ["draft", "published", "archived"]);
 
+// Values mirror productStatusSchema in @biova/shared. Transitions are enforced
+// in the products domain service; the enum only rejects unknown states.
+export const productStatus = pgEnum("product_status", ["draft", "published", "archived"]);
+
 export const creators = pgTable("creators", {
   id: uuid("id").defaultRandom().primaryKey(),
   // One creator profile per auth user.
@@ -48,6 +52,24 @@ export const links = pgTable("links", {
   enabled: boolean("enabled").notNull().default(true),
   ...timestamps(),
 }, (table) => [index("links_creator_sort_idx").on(table.creatorId, table.sortOrder)]);
+
+export const products = pgTable("products", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id, { onDelete: "cascade" }),
+  // Unique per creator, not globally: two creators may both sell "preset-pack".
+  slug: varchar("slug", { length: 48 }).notNull(),
+  title: varchar("title", { length: 120 }).notNull(),
+  description: text("description"),
+  // Whole rupiah. Rupiah has no minor unit, so an integer is exact.
+  priceIdr: integer("price_idr").notNull(),
+  status: productStatus("status").notNull().default("draft"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  ...timestamps(),
+}, (table) => [
+  uniqueIndex("products_creator_slug_uq").on(table.creatorId, table.slug),
+  index("products_creator_sort_idx").on(table.creatorId, table.sortOrder),
+  index("products_status_idx").on(table.status),
+]);
 
 export const plugins = pgTable("plugins", {
   id: varchar("id", { length: 100 }).primaryKey(),

@@ -4,15 +4,21 @@ import { authClient } from "../auth-client";
 import {
   createCreator,
   createLink,
+  createProduct,
   deleteLink,
+  deleteProduct,
   getDashboard,
   getSession,
   reorderLinks,
+  reorderProducts,
   setPageStatus,
+  setProductStatus,
   updateLink,
   updatePage,
+  updateProduct,
   updateProfile,
 } from "../server/dashboard";
+import { formatPriceIdr } from "@biova/shared/product";
 
 export const Route = createFileRoute("/dashboard")({
   loader: async () => ({
@@ -130,7 +136,7 @@ function Onboarding() {
 
 function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeof getDashboard>>>; email: string }) {
   const router = useRouter();
-  const { creator, page, links } = data;
+  const { creator, page, links, products } = data;
   const published = page?.status === "published";
   const [error, setError] = useState<string | null>(null);
 
@@ -164,6 +170,7 @@ function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeo
       <ProfileForm creator={creator} onSave={(payload) => run(async () => updateProfile({ data: payload }))} />
       <PageForm page={page} onSave={(payload) => run(async () => updatePage({ data: payload }))} />
       <LinksEditor links={links} onError={setError} />
+      <ProductsEditor products={products} onError={setError} />
     </Shell>
   );
 }
@@ -284,5 +291,123 @@ function LinksEditor({ links, onError }: { links: LinkRow[]; onError: (message: 
       </ul>
       {links.length === 0 ? <p className="intro">No links yet. Add your first one above.</p> : null}
     </section>
+  );
+}
+
+type ProductRow = { id: string; slug: string; title: string; description: string | null; priceIdr: number; status: string };
+
+function ProductsEditor({ products, onError }: { products: ProductRow[]; onError: (message: string | null) => void }) {
+  const router = useRouter();
+  const [title, setTitle] = useState("");
+  const [slug, setSlug] = useState("");
+  const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
+
+  async function run(action: () => Promise<{ ok: boolean; error?: string }>) {
+    onError(null);
+    const result = await action();
+    if (!result.ok) onError(result.error ?? "Something went wrong");
+    await router.invalidate();
+  }
+
+  async function add(event: React.FormEvent) {
+    event.preventDefault();
+    await run(async () => createProduct({ data: { title, slug, priceIdr: Number(price), description: description || null } }));
+    setTitle("");
+    setSlug("");
+    setPrice("");
+    setDescription("");
+  }
+
+  async function move(index: number, direction: -1 | 1) {
+    const next = [...products];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    await run(async () => reorderProducts({ data: { ids: next.map((product) => product.id) } }));
+  }
+
+  return (
+    <section className="panel">
+      <div className="eyebrow">PRODUCTS ({products.length})</div>
+      <form className="form inline" onSubmit={add}>
+        <label>Title<input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
+        <label>Slug<input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase())} required placeholder="preset-pack" /></label>
+        <label>Price (IDR)<input type="number" min={0} max={100000000} step={1000} value={price} onChange={(e) => setPrice(e.target.value)} required /></label>
+        <label>Description<input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} /></label>
+        <button className="button primary" type="submit">Add product</button>
+      </form>
+      <ul className="rows">
+        {products.map((product, index) => (
+          <ProductRowItem
+            key={product.id}
+            product={product}
+            first={index === 0}
+            last={index === products.length - 1}
+            onMove={move}
+            index={index}
+            run={run}
+          />
+        ))}
+      </ul>
+      {products.length === 0 ? <p className="intro">No products yet. Add your first digital product above.</p> : null}
+    </section>
+  );
+}
+
+function ProductRowItem({
+  product,
+  index,
+  first,
+  last,
+  onMove,
+  run,
+}: {
+  product: ProductRow;
+  index: number;
+  first: boolean;
+  last: boolean;
+  onMove: (index: number, direction: -1 | 1) => Promise<void>;
+  run: (action: () => Promise<{ ok: boolean; error?: string }>) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(product.title);
+  const [price, setPrice] = useState(String(product.priceIdr));
+  const published = product.status === "published";
+
+  return (
+    <li className={published ? "row" : "row disabled"}>
+      <span className="row-icon">◫</span>
+      <div className="row-body">
+        {editing ? (
+          <form
+            className="form inline"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(async () => updateProduct({ data: { productId: product.id, title, priceIdr: Number(price) } })).then(() => setEditing(false));
+            }}
+          >
+            <label>Title<input value={title} onChange={(e) => setTitle(e.target.value)} required /></label>
+            <label>Price (IDR)<input type="number" min={0} max={100000000} step={1000} value={price} onChange={(e) => setPrice(e.target.value)} required /></label>
+            <button className="button primary" type="submit">Save</button>
+            <button className="text-link as-button" type="button" onClick={() => setEditing(false)}>Cancel</button>
+          </form>
+        ) : (
+          <>
+            <strong>{product.title}</strong>
+            <small>{formatPriceIdr(product.priceIdr)} · /{product.slug} · {product.status}</small>
+          </>
+        )}
+      </div>
+      <div className="row-actions">
+        <button type="button" className="chip" onClick={() => void onMove(index, -1)} disabled={first} aria-label="Move up">↑</button>
+        <button type="button" className="chip" onClick={() => void onMove(index, 1)} disabled={last} aria-label="Move down">↓</button>
+        <button type="button" className="chip" onClick={() => setEditing(!editing)}>{editing ? "Close" : "Edit"}</button>
+        <button type="button" className="chip" onClick={() => void run(async () => setProductStatus({ data: { productId: product.id, status: published ? "draft" : "published" } }))}>
+          {published ? "Unpublish" : "Publish"}
+        </button>
+        <button type="button" className="chip danger" onClick={() => void run(async () => deleteProduct({ data: { productId: product.id } }))}>Delete</button>
+      </div>
+    </li>
   );
 }

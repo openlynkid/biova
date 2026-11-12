@@ -1,5 +1,5 @@
 // Dev-only demo data. Run with: bun run db:seed (after db:migrate).
-// Idempotent: re-running replaces the demo creator's links and page.
+// Idempotent: re-running replaces the demo creator's links, products and page.
 import { db, schema } from "@biova/database";
 import { createServices, type BiovaServices } from "@biova/core";
 
@@ -15,6 +15,11 @@ const LINKS = [
   { title: "YouTube", url: "https://youtube.com/@example", description: "Video terbaru", icon: "▶" },
   { title: "Instagram", url: "https://instagram.com/example", description: "Foto harian", icon: "◉" },
   { title: "Toko Digital", url: "https://example.com/shop", description: "Produk dan preset", icon: "◫" },
+];
+
+const PRODUCTS = [
+  { title: "Preset Lightroom Moody", slug: "preset-moody", priceIdr: 49_000, description: "10 preset siap pakai untuk foto sehari-hari." },
+  { title: "E-book Panduan Konten", slug: "ebook-konten", priceIdr: 89_000, description: "PDF 60 halaman tentang strategi konten." },
 ];
 
 const services: BiovaServices = createServices(db);
@@ -55,10 +60,20 @@ async function main() {
     if (!result.ok) throw new Error(`failed to create link: ${result.error}`);
   }
 
+  const existingProducts = await services.products.list(creator.id);
+  for (const product of existingProducts) await services.products.remove(creator.id, product.id);
+  for (const product of PRODUCTS) {
+    const result = await services.products.create({ creatorId: creator.id, ...product });
+    if (!result.ok) throw new Error(`failed to create product: ${result.error}`);
+    // Products start as drafts; the demo page should show a live catalog.
+    const live = await services.products.setStatus(creator.id, result.value.id, "published");
+    if (!live.ok) throw new Error(`failed to publish product: ${live.error}`);
+  }
+
   const published = await services.pages.setStatus(creator.id, "published");
   if (!published.ok) throw new Error(`failed to publish page: ${published.error}`);
 
-  console.log(`Seeded demo creator "${DEMO.slug}" with ${LINKS.length} links (published).`);
+  console.log(`Seeded demo creator "${DEMO.slug}" with ${LINKS.length} links and ${PRODUCTS.length} products (published).`);
 }
 
 await main();

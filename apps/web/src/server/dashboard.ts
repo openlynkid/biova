@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createServices, type BiovaServices } from "@biova/core";
 import {
   createLinkSchema,
+  createProductSchema,
   creatorSlugSchema,
   displayNameSchema,
   bioSchema,
@@ -13,6 +14,10 @@ import {
   linkIconSchema,
   pageThemeSchema,
   pageStatusSchema,
+  productStatusSchema,
+  productTitleSchema,
+  productDescriptionSchema,
+  productPriceSchema,
   type PageTheme,
 } from "@biova/shared";
 
@@ -40,6 +45,15 @@ async function requireCreator() {
   return { services, creator, userId };
 }
 
+export interface ProductView {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  priceIdr: number;
+  status: string;
+}
+
 export interface DashboardData {
   creator: {
     id: string;
@@ -49,6 +63,7 @@ export interface DashboardData {
   };
   page: { title: string; status: string; theme: PageTheme } | null;
   links: { id: string; title: string; url: string; description: string | null; icon: string | null; enabled: boolean }[];
+  products: ProductView[];
 }
 
 // The dashboard loader: one round trip for creator, page and links.
@@ -61,11 +76,13 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
 
   const page = await services.pages.ensurePage(creator.id);
   const links = await services.links.list(creator.id);
+  const products = await services.products.list(creator.id);
 
   return {
     creator: { id: creator.id, slug: creator.slug, displayName: creator.displayName, bio: creator.bio },
     page: { title: page.title, status: page.status, theme: pageThemeSchema.safeParse(page.theme).data ?? {} },
     links: links.map(({ id, title, url, description, icon, enabled }) => ({ id, title, url, description, icon, enabled })),
+    products: products.map(toProductView),
   };
 });
 
@@ -86,6 +103,28 @@ type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 type LinkView = { id: string; title: string; url: string; description: string | null; icon: string | null; enabled: boolean };
 function toLinkView(link: { id: string; title: string; url: string; description: string | null; icon: string | null; enabled: boolean }): LinkView {
   return { id: link.id, title: link.title, url: link.url, description: link.description, icon: link.icon, enabled: link.enabled };
+}
+
+function toProductView(product: {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  priceIdr: number;
+  status: string;
+}): ProductView {
+  return {
+    id: product.id,
+    slug: product.slug,
+    title: product.title,
+    description: product.description,
+    priceIdr: product.priceIdr,
+    status: product.status,
+  };
+}
+
+function unwrapProduct(result: { ok: true; value: Parameters<typeof toProductView>[0] } | { ok: false; error: string }): ActionResult<ProductView> {
+  return result.ok ? { ok: true, data: toProductView(result.value) } : { ok: false, error: result.error };
 }
 
 function unwrapLink(result: { ok: true; value: Parameters<typeof toLinkView>[0] } | { ok: false; error: string }): ActionResult<LinkView> {
@@ -198,5 +237,63 @@ export const reorderLinks = createServerFn({ method: "POST" })
     const { services, creator } = await requireCreator();
     if (!creator) return { ok: false as const, error: "not_found" };
     const result = await services.links.reorder(creator.id, data.ids);
+    return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
+  });
+
+export const createProduct = createServerFn({ method: "POST" })
+  .validator(createProductSchema)
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.products.create({ creatorId: creator.id, ...data });
+    return unwrapProduct(result);
+  });
+
+export const updateProduct = createServerFn({ method: "POST" })
+  .validator(
+    z.object({
+      productId: z.uuid(),
+      title: productTitleSchema.optional(),
+      description: productDescriptionSchema.nullish(),
+      priceIdr: productPriceSchema.optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.products.update({
+      creatorId: creator.id,
+      productId: data.productId,
+      title: data.title,
+      description: data.description,
+      priceIdr: data.priceIdr,
+    });
+    return unwrapProduct(result);
+  });
+
+export const setProductStatus = createServerFn({ method: "POST" })
+  .validator(z.object({ productId: z.uuid(), status: productStatusSchema }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.products.setStatus(creator.id, data.productId, data.status);
+    return unwrapProduct(result);
+  });
+
+export const deleteProduct = createServerFn({ method: "POST" })
+  .validator(z.object({ productId: z.uuid() }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.products.remove(creator.id, data.productId);
+    return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
+  });
+
+export const reorderProducts = createServerFn({ method: "POST" })
+  .validator(z.object({ ids: z.array(z.uuid()).min(1).max(200) }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.products.reorder(creator.id, data.ids);
     return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
   });

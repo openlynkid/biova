@@ -244,6 +244,91 @@ export function createApp(deps: AppDeps) {
       return { ids: result.value.ids };
     })
 
+    // Products. Same isolation rule as links: the creator comes from the
+    // session, never from the request body.
+    .get("/v1/products", async ({ request, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      return { products: await auth.services.products.list(auth.creator.id) };
+    })
+    .post("/v1/products", async ({ request, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as Record<string, unknown>;
+      const result = await auth.services.products.create({
+        creatorId: auth.creator.id,
+        title: String(payload.title ?? ""),
+        slug: String(payload.slug ?? ""),
+        description: payload.description == null ? null : String(payload.description),
+        priceIdr: Number(payload.priceIdr),
+      });
+      if (!result.ok) return errorResponse(set, result.error);
+      set.status = 201;
+      return { product: result.value };
+    })
+    .patch("/v1/products/:id", async ({ request, params, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as Record<string, unknown>;
+      const result = await auth.services.products.update({
+        creatorId: auth.creator.id,
+        productId: params.id,
+        title: payload.title == null ? undefined : String(payload.title),
+        description: payload.description == null ? undefined : String(payload.description),
+        priceIdr: payload.priceIdr == null ? undefined : Number(payload.priceIdr),
+      });
+      if (!result.ok) return errorResponse(set, result.error);
+      return { product: result.value };
+    })
+    .put("/v1/products/:id/status", async ({ request, params, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as { status?: unknown };
+      const result = await auth.services.products.setStatus(auth.creator.id, params.id, String(payload.status ?? ""));
+      if (!result.ok) return errorResponse(set, result.error);
+      return { product: result.value };
+    })
+    .delete("/v1/products/:id", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const result = await auth.services.products.remove(auth.creator.id, params.id);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { id: result.value.id };
+    })
+    .put("/v1/products/reorder", async ({ request, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as { ids?: unknown };
+      const ids = Array.isArray(payload.ids) ? payload.ids.map(String) : [];
+      const result = await auth.services.products.reorder(auth.creator.id, ids);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { ids: result.value.ids };
+    })
+
     // Public read model. No session required; only published pages are returned.
     .get("/v1/public/:slug", async ({ params, set }) => {
       const services = await deps.getServices();

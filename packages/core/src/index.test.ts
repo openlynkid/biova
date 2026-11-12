@@ -42,4 +42,18 @@ describe("public page read model", () => {
   test("returns undefined for an unknown username", async () => {
     expect(await getPublicPage(services, "nobody")).toBeUndefined();
   });
+
+  test("exposes only published products in the catalog", async () => {
+    const draft = await services.products.create({ creatorId, title: "Draft", slug: "core-draft", priceIdr: 1000 });
+    const live = await services.products.create({ creatorId, title: "Live", slug: "core-live", priceIdr: 25_000 });
+    const archived = await services.products.create({ creatorId, title: "Old", slug: "core-old", priceIdr: 500 });
+    if (!draft.ok || !live.ok || !archived.ok) throw new Error("setup failed");
+
+    await services.products.setStatus(creatorId, live.value.id, "published");
+    await services.products.setStatus(creatorId, archived.value.id, "published");
+    await services.products.setStatus(creatorId, archived.value.id, "archived");
+
+    const page = await getPublicPage(services, "coreuser");
+    expect(page?.products).toEqual([{ slug: "core-live", title: "Live", description: null, priceIdr: 25_000 }]);
+  });
 });

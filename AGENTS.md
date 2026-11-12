@@ -22,11 +22,14 @@ shape day-to-day decisions:
   Indonesia-first (IDR, Bahasa Indonesia and English), global-ready.
 - Roadmap phases: 1 Foundation, 2 Core link-in-bio, 3 Creator commerce,
   4 Growth and analytics, 5 Plugin ecosystem. Current state: Phase 1 complete
-  (auth foundation, database schema). Phase 2 in progress: creator, page and
-  links domains plus the public page route are implemented.
-- Domain boundaries to build next: products, orders, payments, analytics, media.
-  Each domain owns its tables, repositories and service APIs, and exposes a
-  public interface (ADR-0002, ADR-0004). Creator, page and links are done.
+  (auth foundation, database schema). Phase 2 complete: creator, page and links
+  domains, the public page route and the creator dashboard are implemented.
+  Phase 3 in progress: the products domain (digital product CRUD, catalog on the
+  public page, `/v1/products` routes) is implemented; checkout, Midtrans and
+  asset storage are next.
+- Domain boundaries to build next: orders, payments, analytics, media. Each
+  domain owns its tables, repositories and service APIs, and exposes a public
+  interface (ADR-0002, ADR-0004). Creator, page, links and products are done.
 - Payments use Midtrans. Payment status may only change from a verified server
   webhook, and webhooks must be idempotent.
 - Paid files must never be reachable by public URL or by client-asserted
@@ -116,8 +119,10 @@ a build step that requires `DATABASE_URL`.
   dependencies. Business rules belong in packages.
 - `packages/core`: composition root. Builds the domain services from a
   `Database` handle and exposes the public read model `getPublicPage`.
-- `packages/creator`, `packages/page`, `packages/links`: domain packages. Each
-  exports a repository (SQL) and a service (rules, returning `Result`).
+- `packages/creator`, `packages/page`, `packages/links`, `packages/products`:
+  domain packages. Each exports a repository (SQL) and a service (rules,
+  returning `Result`). Products own `products` (slug unique per creator, price
+  in whole rupiah) and publish through the same transition table as pages.
 - `packages/plugin-sdk`: stable plugin contracts (`BiovaPlugin`,
   `ErasedPageBlockDefinition`).
 - `packages/plugin-registry`: build-time catalog + runtime activation resolver.
@@ -126,7 +131,10 @@ a build step that requires `DATABASE_URL`.
   `./testing` (PGlite helper).
 - `packages/auth`: the single Better Auth instance shared by web and API.
 - `packages/shared`: framework-agnostic primitives: validation schemas, `Result`,
-  `sessionPolicy`, `createRateLimiter`.
+  `sessionPolicy`, `createRateLimiter`. The barrel also re-exports `./env`
+  (`readEnv`), which touches `process`/`Bun`, so browser components import pure
+  modules through a subpath (e.g. `@biova/shared/product`) instead of the barrel
+  to keep server-only code out of the client bundle.
 - `plugins/*`: independently versioned plugin packages compiled into the host.
 
 ## Conventions and gotchas

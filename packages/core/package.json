@@ -15,6 +15,7 @@
     "@biova/database": "workspace:*",
     "@biova/links": "workspace:*",
     "@biova/page": "workspace:*",
+    "@biova/products": "workspace:*",
     "@biova/shared": "workspace:*"
   },
   "devDependencies": {

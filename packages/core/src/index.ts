@@ -7,12 +7,18 @@ import {
 } from "@biova/creator";
 import { createLinkRepository, createLinkService, type Link, type LinkService } from "@biova/links";
 import { createPageRepository, createPageService, type PageService } from "@biova/page";
+import {
+  createProductRepository,
+  createProductService,
+  type ProductService,
+} from "@biova/products";
 import { pageThemeSchema, type PageTheme } from "@biova/shared";
 
 export interface BiovaServices {
   creators: CreatorService;
   pages: PageService;
   links: LinkService;
+  products: ProductService;
 }
 
 // Composition root: the web app and the API both build their services here so
@@ -22,18 +28,29 @@ export function createServices(db: Database): BiovaServices {
   const creatorRepository = createCreatorRepository(db);
   const linkRepository = createLinkRepository(db);
   const pageRepository = createPageRepository(db);
+  const productRepository = createProductRepository(db);
 
   const links = createLinkService(linkRepository);
+  const products = createProductService(productRepository);
   const pages = createPageService(pageRepository, (creatorId) => links.hasEnabledLink(creatorId));
   const creators = createCreatorService(creatorRepository);
 
-  return { creators, pages, links };
+  return { creators, pages, links, products };
+}
+
+export interface PublicProduct {
+  slug: string;
+  title: string;
+  description: string | null;
+  priceIdr: number;
 }
 
 export interface PublicPage {
   creator: Pick<Creator, "slug" | "displayName" | "bio">;
   page: { title: string; theme: PageTheme; publishedAt: Date | null };
   links: Pick<Link, "id" | "title" | "url" | "description" | "icon">[];
+  // Only published products are exposed; drafts and archived items never leak.
+  products: PublicProduct[];
 }
 
 // Read model for the public page. Returns undefined unless the creator exists
@@ -46,6 +63,7 @@ export async function getPublicPage(services: BiovaServices, slug: string): Prom
   if (!page || page.status !== "published") return undefined;
 
   const links = await services.links.list(creator.id);
+  const products = await services.products.listPublished(creator.id);
 
   // Stored theme may predate the current schema; ignore unknown keys rather than
   // failing the page, and only expose the values the renderer understands.
@@ -57,5 +75,6 @@ export async function getPublicPage(services: BiovaServices, slug: string): Prom
     links: links
       .filter((link) => link.enabled)
       .map(({ id, title, url, description, icon }) => ({ id, title, url, description, icon })),
+    products: products.map(({ slug, title, description, priceIdr }) => ({ slug, title, description, priceIdr })),
   };
 }

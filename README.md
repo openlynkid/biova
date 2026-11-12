@@ -45,9 +45,10 @@ With the demo data seeded, the public page is at http://localhost:3000/demo.
 ## Creator dashboard
 
 `/dashboard` is the creator-facing UI: sign in or sign up (Better Auth, email
-and password), claim a username, then edit the profile, the page title, the theme
-and the links, and publish or unpublish the page. The route renders the sign-in
-panel when there is no session, so it is safe to open directly.
+and password), claim a username, then edit the profile, the page title, the theme,
+the links and the digital products, and publish or unpublish each item. The route
+renders the sign-in panel when there is no session, so it is safe to open
+directly.
 
 Mutations are TanStack Start server functions that resolve the session from the
 request cookies and call the same domain services as the API; the browser never
@@ -59,12 +60,12 @@ reaches the database. See `docs/adr/0006-creator-dashboard.md`.
 - `apps/api`: Elysia HTTP adapter only. `src/app.ts` builds the injectable app;
   `src/index.ts` wires real dependencies. Keep business rules in packages, not route handlers.
 - `packages/core`: composition root that builds the domain services and exposes the public read model.
-- `packages/creator`, `packages/page`, `packages/links`: domain packages (repository + service).
+- `packages/creator`, `packages/page`, `packages/links`, `packages/products`: domain packages (repository + service).
 - `packages/plugin-sdk`: stable contracts available to first-party and third-party plugins.
 - `packages/plugin-registry`: build-time plugin catalog plus runtime activation resolver.
 - `packages/database`: Drizzle schema, connection and migrations.
 - `packages/auth`: Better Auth instance shared by the web app and the API.
-- `packages/shared`: framework-agnostic shared primitives (validation, `Result`, session policy, rate limiter).
+- `packages/shared`: framework-agnostic shared primitives (validation, `Result`, session policy, rate limiter). Browser code imports pure modules through a subpath (for example `@biova/shared/product`) so the server-only `readEnv` helper never enters the client bundle.
 - `plugins/*`: independently versioned plugin packages. They are compiled into the host application; runtime activation controls availability per creator.
 
 ## API
@@ -88,6 +89,12 @@ never read from the request.
 | PATCH | `/v1/links/:id` | yes | Update a link |
 | DELETE | `/v1/links/:id` | yes | Remove a link |
 | PUT | `/v1/links/reorder` | yes | Set the link order |
+| GET | `/v1/products` | yes | List the creator's digital products |
+| POST | `/v1/products` | yes | Add a product (title, slug, price in IDR) |
+| PATCH | `/v1/products/:id` | yes | Update a product |
+| PUT | `/v1/products/:id/status` | yes | Publish, unpublish or archive a product |
+| DELETE | `/v1/products/:id` | yes | Remove a product |
+| PUT | `/v1/products/reorder` | yes | Set the product order |
 | GET | `/v1/public/:slug` | no | Published page read model |
 
 Errors are stable codes (`unauthorized`, `invalid_input`, `not_found`,
@@ -102,6 +109,9 @@ Errors are stable codes (`unauthorized`, `invalid_input`, `not_found`,
 loads the database driver on the server only. Draft or unknown usernames render
 the not-found view and never reveal that a page exists. Link destinations are
 restricted to `http`/`https` and render with `rel="noopener noreferrer nofollow"`.
+Published digital products render as a catalog below the links, with prices
+formatted as whole rupiah (`formatPriceIdr`). Only published products are in the
+read model, so drafts and archived items stay private.
 
 ## Plugin model
 
@@ -130,8 +140,9 @@ no environment variables set, and CI runs exactly these four. Domain and API
 tests run against PGlite (`@biova/database/testing`) with the real Drizzle
 migrations applied, so they exercise actual SQL without a database server.
 
-Test coverage today: creator, page and links services (18 tests), the API routes
-and isolation rules (14 tests), and the public read model (3 tests).
+Test coverage today: creator, page, links and products services (28 tests), the
+API routes and isolation rules (16 tests), the public read model (4 tests) and
+shared schemas (13 tests).
 
 Notes from earlier validation passes:
 

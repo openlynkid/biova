@@ -1,4 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { formatPriceIdr } from "@biova/shared/product";
 import { getPublicPage } from "../server/public-page";
 
 export const Route = createFileRoute("/$username")({
@@ -33,7 +34,7 @@ function themeStyle(theme: { accent?: string; background?: string; textColor?: s
 }
 
 function PublicPage() {
-  const { creator, page, links } = Route.useLoaderData();
+  const { creator, page, links, products } = Route.useLoaderData();
   const theme = page.theme ?? {};
   // Theme values are validated hex colours, so they are safe to inline.
   const themed = Boolean(theme.accent || theme.background || theme.textColor);
@@ -66,6 +67,20 @@ function PublicPage() {
           </a>
         ))}
       </section>
+      {products.length > 0 ? (
+        <section className="product-list" aria-label={`${page.title} products`}>
+          <div className="section-heading"><div className="eyebrow">PRODUCTS</div><span className="count">{products.length} ITEM</span></div>
+          {products.map((product) => (
+            <article key={product.slug} className="product-card">
+              <div className="product-body">
+                <strong>{product.title}</strong>
+                {product.description ? <small>{product.description}</small> : null}
+              </div>
+              <span className="product-price">{formatPriceIdr(product.priceIdr)}</span>
+            </article>
+          ))}
+        </section>
+      ) : null}
       <footer>
         <span>BIOVA</span>
         <Link to="/">Claim your username ↗</Link>

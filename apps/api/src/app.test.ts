@@ -137,12 +137,74 @@ describe("biova api", () => {
     expect(((await aliceLinks.json()) as { links: unknown[] }).links.length).toBe(1);
   });
 
+  test("creator manages products and only published ones reach the public page", async () => {
+    const draft = await request(
+      "/v1/products",
+      { method: "POST", body: JSON.stringify({ title: "E-book", slug: "ebook", priceIdr: 49_000 }) },
+      aliceId,
+    );
+    expect(draft.status).toBe(201);
+    const { product } = (await draft.json()) as { product: { id: string; status: string } };
+    expect(product.status).toBe("draft");
+
+    const duplicate = await request(
+      "/v1/products",
+      { method: "POST", body: JSON.stringify({ title: "Again", slug: "ebook", priceIdr: 1000 }) },
+      aliceId,
+    );
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toEqual({ error: "slug_taken" });
+
+    const invalidPrice = await request(
+      "/v1/products",
+      { method: "POST", body: JSON.stringify({ title: "Cheap", slug: "cheap", priceIdr: -5 }) },
+      aliceId,
+    );
+    expect(invalidPrice.status).toBe(422);
+
+    const beforePublish = await request("/v1/public/alice");
+    expect(((await beforePublish.json()) as { products: unknown[] }).products).toEqual([]);
+
+    const published = await request(
+      `/v1/products/${product.id}/status`,
+      { method: "PUT", body: JSON.stringify({ status: "published" }) },
+      aliceId,
+    );
+    expect(published.status).toBe(200);
+
+    const afterPublish = await request("/v1/public/alice");
+    expect(((await afterPublish.json()) as { products: { slug: string; title: string; description: string | null; priceIdr: number }[] }).products).toEqual([
+      { slug: "ebook", title: "E-book", description: null, priceIdr: 49_000 },
+    ]);
+  });
+
+  test("a creator cannot read or modify another creator's products", async () => {
+    const aliceProducts = await request("/v1/products", {}, aliceId);
+    const { products } = (await aliceProducts.json()) as { products: { id: string }[] };
+    expect(products.length).toBe(1);
+
+    const bobProducts = await request("/v1/products", {}, bobId);
+    expect(await bobProducts.json()).toEqual({ products: [] });
+
+    const stolen = await request(
+      `/v1/products/${products[0].id}`,
+      { method: "PATCH", body: JSON.stringify({ title: "Stolen" }) },
+      bobId,
+    );
+    expect(stolen.status).toBe(404);
+
+    const removed = await request(`/v1/products/${products[0].id}`, { method: "DELETE" }, bobId);
+    expect(removed.status).toBe(404);
+  });
+
   test("anonymous access to private endpoints is unauthorized", async () => {
     for (const [method, path] of [
       ["GET", "/v1/creator"],
       ["GET", "/v1/links"],
       ["POST", "/v1/links"],
       ["PATCH", "/v1/page"],
+      ["GET", "/v1/products"],
+      ["POST", "/v1/products"],
     ] as const) {
       const response = await request(path, { method, body: method === "GET" ? undefined : "{}" });
       expect(response.status).toBe(401);

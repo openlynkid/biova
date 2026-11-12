@@ -86,6 +86,7 @@
         "@biova/database": "workspace:*",
         "@biova/links": "workspace:*",
         "@biova/page": "workspace:*",
+        "@biova/products": "workspace:*",
         "@biova/shared": "workspace:*",
       },
       "devDependencies": {
@@ -171,6 +172,21 @@
       },
       "peerDependencies": {
         "react": ">=19",
+      },
+    },
+    "packages/products": {
+      "name": "@biova/products",
+      "version": "0.1.0",
+      "dependencies": {
+        "@biova/database": "workspace:*",
+        "@biova/shared": "workspace:*",
+        "drizzle-orm": "0.45.4",
+        "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@biova/creator": "workspace:*",
+        "@electric-sql/pglite": "0.5.16",
+        "typescript": "5.9.3",
       },
     },
     "packages/shared": {
@@ -268,6 +284,8 @@
     "@biova/plugin-sdk": ["@biova/plugin-sdk@workspace:packages/plugin-sdk"],
 
     "@biova/plugin-social-links": ["@biova/plugin-social-links@workspace:plugins/social-links"],
+
+    "@biova/products": ["@biova/products@workspace:packages/products"],
 
     "@biova/shared": ["@biova/shared@workspace:packages/shared"],
 
