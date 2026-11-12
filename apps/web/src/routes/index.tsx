@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { getEnabledPlugins } from "../plugins";
 
 export const Route = createFileRoute("/")({ component: HomePage });
@@ -12,7 +12,7 @@ function HomePage() {
         <div className="eyebrow"><span className="pulse" /> MODULAR CREATOR PLATFORM</div>
         <h1>Your space.<br /><em>Your rules.</em></h1>
         <p className="intro">One home for your identity, content and commerce. Add the tools you need, leave out the ones you don't.</p>
-        <div className="actions"><a className="button primary" href="#plugins">Explore the foundation <span>↗</span></a><a className="text-link" href="https://elysiajs.com/">Built with Bun ↗</a></div>
+        <div className="actions"><Link className="button primary" to="/dashboard">Create your page <span>↗</span></Link><a className="text-link" href="#plugins">Explore the foundation</a></div>
       </section>
       <section id="plugins" className="plugin-section">
         <div className="section-heading"><div><div className="eyebrow">EXTEND YOUR SPACE</div><h2>One platform. Modular by design.</h2></div><span className="count">{plugins.length} PLUGIN LOADED</span></div>

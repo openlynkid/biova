@@ -78,6 +78,8 @@ Schema constraints worth knowing:
   `postgres://postgres:postgres@localhost:5432/biova`.
 - `.env` is git-ignored; `.env.example` is committed. Required variables:
   `DATABASE_URL`, `BETTER_AUTH_SECRET` (32+ chars), `BETTER_AUTH_URL`.
+  `CORS_ORIGINS` doubles as Better Auth's `trustedOrigins`, and
+  `BETTER_AUTH_ALLOWED_HOSTS` overrides the auth host allowlist (see below).
 - `@biova/database` throws at import when `DATABASE_URL` is missing. Keep this
   in mind for tests and for any module that imports it eagerly.
 
@@ -94,9 +96,11 @@ bun run db:migrate              # apply migrations + assert auth tables exist
 bun run db:seed                 # dev demo data (creator "demo", published page)
 ```
 
-`bun run db:migrate` and `bun run db:seed` read `DATABASE_URL`. Because turbo
-changes the working directory to the package, export the env first:
-`set -a && . ./.env && set +a`.
+`bun run dev`, `bun run db:migrate` and `bun run db:seed` read `DATABASE_URL`.
+The root scripts pass `--env-file=.env` because the web dev server runs under
+Node, where Bun does not load `.env` automatically. Run them from the repo root;
+`--env-file` is relative to the process cwd, so a missing `.env` is only fatal if
+the value is actually required.
 
 `bun run lint`, `bun run typecheck`, `bun run test` and `bun run build` all pass
 without any environment variables set; CI runs exactly these four with no env.
@@ -161,9 +165,25 @@ a build step that requires `DATABASE_URL`.
   `vite build`. Adding a route requires a build before typecheck passes.
 - Elysia and API handlers are tested through `app.handle(new Request(...))`; the
   app is built by `createApp(deps)` so tests inject PGlite and a fake session.
-- `apps/web/src/server/public-page.ts` is a TanStack Start server function. It
-  loads `@biova/database` dynamically so the client bundle never includes the
-  driver. Check `dist/client` for leaks after touching it.
+- `apps/web/src/server/public-page.ts` and `apps/web/src/server/dashboard.ts` are
+  TanStack Start server functions. They load `@biova/database` dynamically so the
+  client bundle never includes the driver. Check `dist/client` for leaks after
+  touching them.
+- The dashboard (`apps/web/src/routes/dashboard.tsx`) is the only creator-facing
+  write UI. It authenticates through `auth.api.getSession({ headers:
+  getRequestHeaders() })` and then calls the domain services; never trust a
+  creator id from the browser. `getDashboard` returns `null` for anonymous
+  visitors so the route can render the sign-in panel instead of throwing.
+- Server function payloads must be serializable. Map domain rows (which carry
+  `Date` columns) to plain objects before returning them from a handler.
+- Better Auth uses a dynamic `baseURL` (`allowedHosts` + `protocol: "auto"`).
+  `BETTER_AUTH_ALLOWED_HOSTS` overrides the allowlist; the development default is
+  `localhost`, `127.0.0.1` and `*.all-hands.dev`. Production has no default, so
+  set the variable (or `BETTER_AUTH_URL`) there. Cookies follow the derived
+  protocol, which keeps the `__Secure-` prefix correct behind the dev tunnel.
+- Page theme colours are validated as `#rgb`/`#rrggbb` (`themeColorSchema`) and
+  rendered as inline CSS variables. Do not loosen that schema: the values reach a
+  `style` attribute.
 
 ## Verification expectations
 

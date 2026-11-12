@@ -5,12 +5,20 @@ export type PageStatus = z.infer<typeof pageStatusSchema>;
 
 export const pageTitleSchema = z.string().trim().min(1).max(120);
 
+// Theme colours are interpolated into inline CSS variables on the public page.
+// Restricting them to #rgb/#rrggbb keeps a creator from injecting CSS or
+// `url(...)` values that would escape the variable.
+export const themeColorSchema = z
+  .string()
+  .trim()
+  .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "use a hex colour like #8298ff");
+
 // Appearance values a creator can set. Kept as a closed schema so the public
 // read model is serializable and the renderer never receives arbitrary keys.
 export const pageThemeSchema = z.object({
-  accent: z.string().trim().max(32).optional(),
-  background: z.string().trim().max(32).optional(),
-  textColor: z.string().trim().max(32).optional(),
+  accent: themeColorSchema.optional(),
+  background: themeColorSchema.optional(),
+  textColor: themeColorSchema.optional(),
   buttonStyle: z.enum(["solid", "outline", "soft"]).optional(),
 });
 export type PageTheme = z.infer<typeof pageThemeSchema>;

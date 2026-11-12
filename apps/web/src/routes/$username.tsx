@@ -24,10 +24,22 @@ export const Route = createFileRoute("/$username")({
   notFoundComponent: NotFound,
 });
 
+function themeStyle(theme: { accent?: string; background?: string; textColor?: string }) {
+  const style: Record<string, string> = {};
+  if (theme.accent) style["--page-accent"] = theme.accent;
+  if (theme.background) style["--page-bg"] = theme.background;
+  if (theme.textColor) style["--page-text"] = theme.textColor;
+  return style as React.CSSProperties;
+}
+
 function PublicPage() {
   const { creator, page, links } = Route.useLoaderData();
+  const theme = page.theme ?? {};
+  // Theme values are validated hex colours, so they are safe to inline.
+  const themed = Boolean(theme.accent || theme.background || theme.textColor);
+  const buttonClass = theme.buttonStyle ? `buttons-${theme.buttonStyle}` : "";
   return (
-    <main className="shell">
+    <main className={`shell${themed ? " themed" : ""}`} style={themeStyle(theme)}>
       <nav className="nav">
         <Link className="brand" to="/">biova<span>·</span></Link>
         <span className="nav-label">@{creator.slug}</span>
@@ -36,7 +48,7 @@ function PublicPage() {
         <h1>{creator.displayName}</h1>
         {creator.bio ? <p className="intro">{creator.bio}</p> : null}
       </header>
-      <section className="link-list" aria-label={`${page.title} links`}>
+      <section className={`link-list ${buttonClass}`.trim()} aria-label={`${page.title} links`}>
         {links.map((link) => (
           <a
             key={link.id}

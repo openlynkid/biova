@@ -53,6 +53,14 @@ describe("page transitions", () => {
     expect(parsed.success && parsed.data).toEqual({ accent: "#fff" });
     expect(pageThemeSchema.safeParse({ buttonStyle: "neon" }).success).toBe(false);
   });
+
+  test("theme colours must be hex, so CSS cannot be injected", () => {
+    expect(pageThemeSchema.safeParse({ accent: "#8298ff" }).success).toBe(true);
+    expect(pageThemeSchema.safeParse({ background: "#abc" }).success).toBe(true);
+    for (const value of ["red", "#12345", "url(https://evil.test/x)", "var(--x)", "#fff;color:red"]) {
+      expect(pageThemeSchema.safeParse({ accent: value }).success).toBe(false);
+    }
+  });
 });
 
 describe("rate limiter", () => {

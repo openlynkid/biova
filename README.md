@@ -32,13 +32,26 @@ bun run dev
 Run PostgreSQL locally, then:
 
 ```bash
-set -a && . ./.env && set +a   # turbo runs in the package dir, so export first
 bun run db:generate
 bun run db:migrate
 bun run db:seed                # optional: demo creator "demo" with a published page
 ```
 
+The `dev`, `db:migrate` and `db:seed` scripts load `.env` themselves
+(`--env-file=.env`). Run them from the repository root.
+
 With the demo data seeded, the public page is at http://localhost:3000/demo.
+
+## Creator dashboard
+
+`/dashboard` is the creator-facing UI: sign in or sign up (Better Auth, email
+and password), claim a username, then edit the profile, the page title, the theme
+and the links, and publish or unpublish the page. The route renders the sign-in
+panel when there is no session, so it is safe to open directly.
+
+Mutations are TanStack Start server functions that resolve the session from the
+request cookies and call the same domain services as the API; the browser never
+reaches the database. See `docs/adr/0006-creator-dashboard.md`.
 
 ## Workspace boundaries
 
