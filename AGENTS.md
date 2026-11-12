@@ -10,6 +10,53 @@ is a Bun-native monorepo (Turborepo) that originated from the Openlynk
 foundation and was renamed to Biova. GitHub: `openlynkid/biova`, default branch
 `main`.
 
+## Product guidance
+
+`docs/PRD.md` is the product source of truth (PRD v1.0, 2026-11-12). Read it
+before starting product work and follow it over assumptions. Highlights that
+shape day-to-day decisions:
+
+- Vision: one link, one storefront, one checkout, one dashboard. Biova is not a
+  marketplace, social network, general-purpose website builder or file host.
+- MVP is one creator, one public page. All segments from launch.
+  Indonesia-first (IDR, Bahasa Indonesia and English), global-ready.
+- Roadmap phases: 1 Foundation, 2 Core link-in-bio, 3 Creator commerce,
+  4 Growth and analytics, 5 Plugin ecosystem. Current state: Phase 1 complete
+  (auth foundation, database schema), Phase 2 in progress.
+- Domain boundaries to build next: creator, page, links, products, orders,
+  payments, analytics, media. Each domain owns its tables, repositories and
+  service APIs, and exposes a public interface (ADR-0002).
+- Payments use Midtrans. Payment status may only change from a verified server
+  webhook, and webhooks must be idempotent.
+- Paid files must never be reachable by public URL or by client-asserted
+  payment status; delivery requires a server-verified entitlement and a signed
+  or tokenized download.
+- Every creator-owned row must support isolation by creator ID, enforced
+  server-side.
+- Plugin UI must not touch the database or secrets, and external plugins must
+  not execute arbitrary code in the main Bun process.
+
+Acceptance criteria for the MVP are listed in section 15 of the PRD; treat them
+as the definition of done for product work.
+
+## PRD entity mapping
+
+PRD section 10 lists target entities; the schema today uses plural table names.
+Map before adding tables so the same concept is not created twice:
+
+| PRD entity | Current table |
+|---|---|
+| user, session | `user`, `session` (+ `account`, `verification`) |
+| creator | `creators` |
+| creator_page | `pages` |
+| page_block | `page_blocks` |
+| plugin, plugin_installation, plugin_setting | `plugins`, `plugin_installations`, `plugin_settings` |
+| creator_profile, page_theme, link, link_click_event, digital_product, product_asset, commerce_order, commerce_order_item, payment_transaction, payment_webhook_event, product_entitlement, page_view_event | not built yet |
+
+Note that `creators.bio` already covers part of `creator_profile`, and `pages.theme`
+covers part of `page_theme`. Extend those tables rather than creating parallel ones
+unless the PRD model genuinely needs a separate lifecycle.
+
 ## Environment
 
 - Runtime and package manager: Bun 1.4.4 (`packageManager: bun@1.4.4`). Bun is

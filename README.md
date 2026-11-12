@@ -2,6 +2,8 @@
 
 Bun-native monorepo foundation for Biova: a modular creator link-in-bio platform with a hybrid plugin system.
 
+Product direction lives in [`docs/PRD.md`](docs/PRD.md) (PRD v1.0). Architecture decisions live in [`docs/adr/`](docs/adr). [`AGENTS.md`](AGENTS.md) is the repository memory for build commands and conventions.
+
 ## Stack baseline
 
 - Bun 1.4.4 (runtime and package manager)
