@@ -39,13 +39,52 @@ bun run db:migrate
 ## Workspace boundaries
 
 - `apps/web`: TanStack Start presentation, SSR, creator dashboard and public page routes.
-- `apps/api`: Elysia HTTP adapter only. Keep business rules in packages, not route handlers.
+- `apps/api`: Elysia HTTP adapter only. `src/app.ts` builds the injectable app;
+  `src/index.ts` wires real dependencies. Keep business rules in packages, not route handlers.
+- `packages/core`: composition root that builds the domain services and exposes the public read model.
+- `packages/creator`, `packages/page`, `packages/links`: domain packages (repository + service).
 - `packages/plugin-sdk`: stable contracts available to first-party and third-party plugins.
 - `packages/plugin-registry`: build-time plugin catalog plus runtime activation resolver.
 - `packages/database`: Drizzle schema, connection and migrations.
 - `packages/auth`: Better Auth instance shared by the web app and the API.
-- `packages/shared`: framework-agnostic shared primitives.
+- `packages/shared`: framework-agnostic shared primitives (validation, `Result`, session policy, rate limiter).
 - `plugins/*`: independently versioned plugin packages. They are compiled into the host application; runtime activation controls availability per creator.
+
+## API
+
+`apps/api` serves JSON under `/v1`. Private routes require a session cookie and
+operate on the creator that belongs to the signed-in user; the creator id is
+never read from the request.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/health` | no | Liveness and runtime info |
+| GET | `/v1` | no | Service metadata |
+| GET | `/v1/session` | yes | Current user |
+| POST | `/v1/creator` | yes | Create the creator and its draft page |
+| GET | `/v1/creator` | yes | Read the creator and page |
+| PATCH | `/v1/creator` | yes | Update display name and bio |
+| PATCH | `/v1/page` | yes | Update page title and theme |
+| PUT | `/v1/page/status` | yes | Move the page between draft, published, archived |
+| GET | `/v1/links` | yes | List the creator's links |
+| POST | `/v1/links` | yes | Add a link |
+| PATCH | `/v1/links/:id` | yes | Update a link |
+| DELETE | `/v1/links/:id` | yes | Remove a link |
+| PUT | `/v1/links/reorder` | yes | Set the link order |
+| GET | `/v1/public/:slug` | no | Published page read model |
+
+Errors are stable codes (`unauthorized`, `invalid_input`, `not_found`,
+`slug_taken`, `invalid_transition`, `not_publishable`, `rate_limited`,
+`internal_error`). Authenticated requests are rate limited per user; set
+`CORS_ORIGINS` to the comma-separated list of allowed browser origins.
+
+## Public page
+
+`GET /:username` renders the published page server-side. The loader calls the
+`getPublicPage` server function in `apps/web/src/server/public-page.ts`, which
+loads the database driver on the server only. Draft or unknown usernames render
+the not-found view and never reveal that a page exists. Link destinations are
+restricted to `http`/`https` and render with `rel="noopener noreferrer nofollow"`.
 
 ## Plugin model
 
@@ -69,15 +108,25 @@ Schema changes flow through Drizzle Kit: `bun run db:generate` writes SQL to `pa
 
 ## Validation
 
-The foundation passes `bun run typecheck`, `bun run test` and `bun run build`. Fixes applied while validating:
+`bun run lint`, `bun run typecheck`, `bun run test` and `bun run build` pass with
+no environment variables set, and CI runs exactly these four. Domain and API
+tests run against PGlite (`@biova/database/testing`) with the real Drizzle
+migrations applied, so they exercise actual SQL without a database server.
+
+Test coverage today: creator, page and links services (18 tests), the API routes
+and isolation rules (14 tests), and the public read model (3 tests).
+
+Notes from earlier validation passes:
 
 - `@biova/plugin-social-links` exported `./src/index.ts` while the file is `src/index.tsx`; the export path was corrected.
 - `PageBlockDefinition` is generic, so a concrete block was not assignable to `BiovaPlugin.pageBlocks`. The SDK now exposes `ErasedPageBlockDefinition` for the registry boundary.
-- `@biova/api` had no tests, so `bun test` failed the workspace; the Elysia app is exported and covered by smoke tests. `@biova/web` covers the shared session policy; the auth flow is exercised against a real PostgreSQL instance.
 
 ## Important implementation notes
 
 - This is a foundation scaffold, not a production-ready SaaS release.
-- Authentication, authorization, tenant isolation, billing, payment webhook idempotency, rate limiting, audit logging, backups and observability must be implemented and tested before launch.
+- Rate limiting is implemented in-process for authenticated API requests. Before
+  horizontal scaling, back `createRateLimiter` with a shared store (Redis).
+- Billing, payment webhook idempotency, audit logging, backups and observability
+  must be implemented and tested before launch.
 - TanStack Start owns the web SSR boundary. Elysia is a separate API process in this scaffold to keep deployment boundaries explicit; consolidate later if operational simplicity is more important than process isolation.
 - Do not expose `DATABASE_URL` or server-only secrets to browser bundles.

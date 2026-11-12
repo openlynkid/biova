@@ -1,1 +1,19 @@
-{ "name": "@biova/shared", "version": "0.1.0", "private": true, "type": "module", "exports": { ".": "./src/index.ts" }, "dependencies": { "zod": "4.6.7" }, "scripts": { "typecheck": "tsc --noEmit" }, "devDependencies": { "typescript": "5.9.3" } }
+{
+  "name": "@biova/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

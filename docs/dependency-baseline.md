@@ -16,6 +16,9 @@
 | Better Auth | 1.7.20 | Installed with the Drizzle adapter (`pg`); auth schema in `packages/database`, instance in `packages/auth` |
 | @better-auth/drizzle-adapter | 1.7.20 | Installed transitively by `better-auth`; use `better-auth/adapters/drizzle` |
 | Zod | 4.6.7 | Shared validation |
+| ESLint | 10.14.0 | Flat config in `eslint.config.js`; `typescript-eslint` 8.72.2, `@eslint/js` 10.0.1, `eslint-plugin-react-hooks` 7.1.1, `globals` 17.14.0 |
+| @electric-sql/pglite | 0.5.16 | In-process Postgres for tests (`@biova/database/testing`); dev dependency only |
+| @elysiajs/cors | 1.4.3 | API CORS allowlist |
 | Turborepo | 2.11.11 | Task orchestration |
 
 The TanStack Start, Vite and React plugin peer dependency matrix must be verified with `bun install` and the first production build. Do not blindly update all dependencies together.

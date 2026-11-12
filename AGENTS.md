@@ -22,10 +22,11 @@ shape day-to-day decisions:
   Indonesia-first (IDR, Bahasa Indonesia and English), global-ready.
 - Roadmap phases: 1 Foundation, 2 Core link-in-bio, 3 Creator commerce,
   4 Growth and analytics, 5 Plugin ecosystem. Current state: Phase 1 complete
-  (auth foundation, database schema), Phase 2 in progress.
-- Domain boundaries to build next: creator, page, links, products, orders,
-  payments, analytics, media. Each domain owns its tables, repositories and
-  service APIs, and exposes a public interface (ADR-0002).
+  (auth foundation, database schema). Phase 2 in progress: creator, page and
+  links domains plus the public page route are implemented.
+- Domain boundaries to build next: products, orders, payments, analytics, media.
+  Each domain owns its tables, repositories and service APIs, and exposes a
+  public interface (ADR-0002, ADR-0004). Creator, page and links are done.
 - Payments use Midtrans. Payment status may only change from a verified server
   webhook, and webhooks must be idempotent.
 - Paid files must never be reachable by public URL or by client-asserted
@@ -49,13 +50,23 @@ Map before adding tables so the same concept is not created twice:
 | user, session | `user`, `session` (+ `account`, `verification`) |
 | creator | `creators` |
 | creator_page | `pages` |
+| link | `links` |
 | page_block | `page_blocks` |
 | plugin, plugin_installation, plugin_setting | `plugins`, `plugin_installations`, `plugin_settings` |
-| creator_profile, page_theme, link, link_click_event, digital_product, product_asset, commerce_order, commerce_order_item, payment_transaction, payment_webhook_event, product_entitlement, page_view_event | not built yet |
+| creator_profile, page_theme, link_click_event, digital_product, product_asset, commerce_order, commerce_order_item, payment_transaction, payment_webhook_event, product_entitlement, page_view_event | not built yet |
 
 Note that `creators.bio` already covers part of `creator_profile`, and `pages.theme`
 covers part of `page_theme`. Extend those tables rather than creating parallel ones
 unless the PRD model genuinely needs a separate lifecycle.
+
+Schema constraints worth knowing:
+
+- `creators.user_id` is unique (one creator per auth user).
+- `pages.creator_id` is unique (MVP is one page per creator). Relax to a
+  `(creator_id, slug)` unique index when multi-page accounts arrive.
+- `pages.status` is the `page_status` enum; the values mirror `pageStatusSchema`
+  in `@biova/shared`.
+- `links.url` is validated to be `http`/`https` at the service boundary.
 
 ## Environment
 
@@ -74,28 +85,39 @@ unless the PRD model genuinely needs a separate lifecycle.
 
 ```bash
 bun install --frozen-lockfile   # install; bun.lock is committed
-bun run typecheck               # turbo typecheck, 8 tasks
+bun run lint                    # eslint .
+bun run typecheck               # turbo typecheck, 12 tasks
 bun run test                    # turbo test
 bun run build                   # turbo build (web is the only builder)
 bun run db:generate             # drizzle-kit generate -> packages/database/drizzle
 bun run db:migrate              # apply migrations + assert auth tables exist
 ```
 
-`bun run typecheck`, `bun run test` and `bun run build` all pass without any
-environment variables set; CI runs exactly these three with no env. Do not
-introduce a build step that requires `DATABASE_URL`.
+`bun run lint`, `bun run typecheck`, `bun run test` and `bun run build` all pass
+without any environment variables set; CI runs exactly these four with no env.
+Domain tests use PGlite, so no database server is needed in CI. Do not introduce
+a build step that requires `DATABASE_URL`.
 
 ## Layout
 
 - `apps/web`: TanStack Start (React 19 SSR). Build-time plugin allowlist lives in
   `src/plugins.ts`. Output is `dist/server/server.js` (`bun dist/server/server.js`).
-- `apps/api`: Elysia HTTP adapter only. Business rules belong in packages.
+- `apps/api`: Elysia HTTP adapter. `src/app.ts` builds the injectable app
+  (routes, CORS, error mapping, rate limiting); `src/index.ts` wires the real
+  dependencies. Business rules belong in packages.
+- `packages/core`: composition root. Builds the domain services from a
+  `Database` handle and exposes the public read model `getPublicPage`.
+- `packages/creator`, `packages/page`, `packages/links`: domain packages. Each
+  exports a repository (SQL) and a service (rules, returning `Result`).
 - `packages/plugin-sdk`: stable plugin contracts (`BiovaPlugin`,
   `ErasedPageBlockDefinition`).
 - `packages/plugin-registry`: build-time catalog + runtime activation resolver.
-- `packages/database`: Drizzle schema, connection (`db`), migrations.
+- `packages/database`: Drizzle schema, connection (`db`), migrations. Subpath
+  exports: `./schema`, `./types` (side-effect free `Database` type),
+  `./testing` (PGlite helper).
 - `packages/auth`: the single Better Auth instance shared by web and API.
-- `packages/shared`: framework-agnostic primitives, including `sessionPolicy`.
+- `packages/shared`: framework-agnostic primitives: validation schemas, `Result`,
+  `sessionPolicy`, `createRateLimiter`.
 - `plugins/*`: independently versioned plugin packages compiled into the host.
 
 ## Conventions and gotchas
@@ -114,11 +136,22 @@ introduce a build step that requires `DATABASE_URL`.
   Drizzle Kit. `packages/database/src/migrate.ts` applies migrations and then
   asserts the four auth tables exist.
 - Import `@biova/auth` lazily in the API so health/metadata endpoints boot
-  without a database.
+  without a database. Import `@biova/database/types` (not `@biova/database`) when
+  only the `Database` type is needed, so no `DATABASE_URL` check runs.
+- Domain repositories accept `Database` (the shared `PgQueryResultHKT` supertype)
+  so the same code runs against postgres.js and PGlite.
+- Services return `Result<T, E>` and never throw for expected failures. Route
+  handlers map error codes to statuses in `apps/api/src/app.ts`.
+- Test database helper: `createTestDatabase()` from `@biova/database/testing`
+  applies the real migrations in-process. Use `createTestUser(db)` for rows that
+  reference an auth user.
 - TanStack Router's `routeTree.gen.ts` is committed and regenerated by
   `vite build`. Adding a route requires a build before typecheck passes.
 - Elysia and API handlers are tested through `app.handle(new Request(...))`; the
-  Elysia app is exported for that purpose.
+  app is built by `createApp(deps)` so tests inject PGlite and a fake session.
+- `apps/web/src/server/public-page.ts` is a TanStack Start server function. It
+  loads `@biova/database` dynamically so the client bundle never includes the
+  driver. Check `dist/client` for leaks after touching it.
 
 ## Verification expectations
 

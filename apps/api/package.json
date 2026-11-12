@@ -2,7 +2,28 @@
   "name": "@biova/api",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "bun --watch src/index.ts", "start": "bun src/index.ts", "typecheck": "tsc --noEmit", "test": "bun test" },
-  "dependencies": { "@biova/auth": "workspace:*", "@biova/database": "workspace:*", "@biova/plugin-registry": "workspace:*", "@biova/shared": "workspace:*", "drizzle-orm": "0.45.4", "elysia": "1.4.30", "zod": "4.6.7" },
-  "devDependencies": { "typescript": "5.9.3" }
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@biova/auth": "workspace:*",
+    "@biova/core": "workspace:*",
+    "@biova/creator": "workspace:*",
+    "@biova/database": "workspace:*",
+    "@biova/links": "workspace:*",
+    "@biova/page": "workspace:*",
+    "@biova/plugin-registry": "workspace:*",
+    "@biova/shared": "workspace:*",
+    "@elysiajs/cors": "1.4.3",
+    "drizzle-orm": "0.45.4",
+    "elysia": "1.4.30",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@electric-sql/pglite": "0.5.16"
+  }
 }

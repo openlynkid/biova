@@ -11,7 +11,8 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "check": "turbo typecheck",
+    "lint": "eslint .",
+    "check": "bun run typecheck && bun run lint",
     "test": "turbo test",
     "typecheck": "turbo typecheck",
     "db:generate": "bun run --filter @biova/database db:generate",
@@ -20,11 +21,16 @@
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/bun": "1.4.4",
     "@types/node": "^22.19.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "eslint": "10.14.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
     "turbo": "2.11.11",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.2"
   }
 }

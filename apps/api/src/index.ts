@@ -1,18 +1,32 @@
-import { Elysia } from "elysia";
+import { createServices, type BiovaServices } from "@biova/core";
+import { createRateLimiter } from "@biova/shared";
+import { createApp } from "./app";
 
-export const app = new Elysia()
-  .get("/health", () => ({ status: "ok", service: "biova-api", runtime: "bun" }))
-  .get("/v1", () => ({ name: "Biova API", version: "0.1.0" }))
-  .get("/v1/session", async ({ request, set }) => {
-    // Imported lazily so the API can boot and its tests can run without DATABASE_URL.
-    const { auth } = await import("@biova/auth");
-    const session = await auth.api.getSession({ headers: request.headers });
-    if (!session) {
-      set.status = 401;
-      return { error: "unauthorized" };
-    }
-    return { user: session.user, session: { expiresAt: session.session.expiresAt } };
-  });
+// Everything that touches the database is loaded lazily so the API can boot and
+// serve /health even when DATABASE_URL is missing (for example in tests).
+let servicesPromise: Promise<BiovaServices> | undefined;
+function getServices(): Promise<BiovaServices> {
+  servicesPromise ??= import("@biova/database").then(({ db }) => createServices(db));
+  return servicesPromise;
+}
+
+async function getSessionUser(headers: Headers) {
+  const { auth } = await import("@biova/auth");
+  const session = await auth.api.getSession({ headers });
+  return session ? { id: session.user.id } : null;
+}
+
+const allowedOrigins = (Bun.env.CORS_ORIGINS ?? "http://localhost:3000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+export const app = createApp({
+  getServices,
+  getSessionUser,
+  allowedOrigins,
+  rateLimiter: createRateLimiter({ windowMs: 60_000, max: 120 }),
+});
 
 if (import.meta.main) {
   app.listen(Number(Bun.env.PORT ?? 3001));

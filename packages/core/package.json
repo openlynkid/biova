@@ -1,0 +1,23 @@
+{
+  "name": "@biova/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --pass-with-no-tests"
+  },
+  "dependencies": {
+    "@biova/creator": "workspace:*",
+    "@biova/database": "workspace:*",
+    "@biova/links": "workspace:*",
+    "@biova/page": "workspace:*",
+    "@biova/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
