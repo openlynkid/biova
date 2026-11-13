@@ -248,11 +248,12 @@ There is one definition of a plugin and the host, the API and every plugin read
 it from the same place.
 
 Build-time, the allowlist lives in `apps/web/src/plugins.ts`, which registers the
-approved `BiovaPlugin` packages into a registry and passes it to
-`createServices` as a `PluginCatalog`. Adding a plugin is a new import and a new
-deployment, never a runtime download. The plugin domain reads that catalog
-through the port, so it never imports a plugin package or a UI framework and
-stays buildable in the API process.
+approved `BiovaPlugin` packages (`@biova/plugin-social-links`,
+`@biova/plugin-testimonials`) into a registry and passes it to `createServices`
+as a `PluginCatalog`. Adding a plugin is a new import and a new deployment, never
+a runtime download. The plugin domain reads that catalog through the port, so it
+never imports a plugin package or a UI framework and stays buildable in the API
+process.
 
 Runtime, a creator installs a plugin from the allowlist, then explicitly enables
 it and grants permissions. An install creates the row with `enabled = false` and

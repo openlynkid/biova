@@ -15,6 +15,7 @@
     "@biova/database": "workspace:*",
     "@biova/plugin-registry": "workspace:*",
     "@biova/plugin-social-links": "workspace:*",
+    "@biova/plugin-testimonials": "workspace:*",
     "@biova/shared": "workspace:*",
     "@tanstack/react-router": "1.170.46",
     "@tanstack/react-start": "1.169.5",

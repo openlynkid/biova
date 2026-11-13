@@ -107,3 +107,8 @@
 .settings-editor label{display:flex;flex-direction:column;gap:6px;font-size:10px;letter-spacing:1.4px;color:#8f929e;text-transform:uppercase}
 .settings-editor textarea{background:#111318;border:1px solid #292b34;border-radius:8px;padding:9px 10px;color:#f4f4f5;font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;min-width:260px;resize:vertical}
 .settings-editor textarea:focus{outline:none;border-color:#8298ff}
+.testimonials-block{display:flex;flex-direction:column;gap:11px;max-width:640px}
+.testimonial{margin:0;padding:16px 18px;border:1px solid #292b34;border-radius:11px;background:#111318}
+.testimonial blockquote{margin:0;font-size:14px;line-height:1.6}
+.testimonial figcaption{margin-top:8px;font-size:11.5px;color:#8f929e}
+.themed .testimonial{border-color:color-mix(in srgb,var(--page-text) 18%,transparent)}
