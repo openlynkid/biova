@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServices } from "@biova/core";
+import { socialLinksManifest } from "@biova/plugin-social-links/manifest";
 import { createFakeProvider } from "@biova/payments";
 import { createRecordingProvider } from "@biova/notifications";
 import { createTestDatabase, createTestUser, type TestDatabase } from "@biova/database/testing";
@@ -25,6 +26,9 @@ beforeAll(async () => {
     paymentProvider: createFakeProvider({ secret: WEBHOOK_SECRET }),
     notificationProvider: notifications,
     siteUrl: "https://biova.test",
+    // The API only needs the manifests; the React plugin packages stay in the
+    // web build. The catalog here stands in for the build-time allowlist.
+    pluginCatalog: { get: (id) => (id === socialLinksManifest.id ? socialLinksManifest : undefined), list: () => [socialLinksManifest] },
   });
 
   aliceId = (await createTestUser(context.db)).id;
@@ -487,6 +491,64 @@ describe("biova api", () => {
     const bob = await request("/v1/analytics/timeseries?range=7d", {}, bobId);
     const { timeseries: bobSeries } = (await bob.json()) as { timeseries: { days: { pageViews: number }[] } };
     expect(bobSeries.days.every((day) => day.pageViews === 0)).toBe(true);
+  });
+
+  test("a creator installs, enables and grants a plugin, then publishes a block", async () => {
+    const installed = await request("/v1/plugins/social-links/install", { method: "POST" }, aliceId);
+    expect(installed.status).toBe(200);
+    const installedBody = (await installed.json()) as { plugin: { installed: boolean; enabled: boolean; grantedPermissions: string[] } };
+    expect(installedBody.plugin.installed).toBe(true);
+    // Installed is not enabled: nothing is active until the creator says so.
+    expect(installedBody.plugin.enabled).toBe(false);
+    expect(installedBody.plugin.grantedPermissions).toEqual([]);
+
+    // A capability the manifest does not declare cannot be granted.
+    const denied = await request("/v1/plugins/social-links/permissions", { method: "PUT", body: JSON.stringify({ grant: "commerce:write" }) }, aliceId);
+    expect(denied.status).toBe(422);
+    expect(await denied.json()).toEqual({ error: "permission_not_declared" });
+
+    const granted = await request("/v1/plugins/social-links/permissions", { method: "PUT", body: JSON.stringify({ grant: "page:write" }) }, aliceId);
+    expect(granted.status).toBe(200);
+    expect(((await granted.json()) as { plugin: { grantedPermissions: string[] } }).plugin.grantedPermissions).toEqual(["page:write"]);
+
+    const enabled = await request("/v1/plugins/social-links/enabled", { method: "PUT", body: JSON.stringify({ enabled: true }) }, aliceId);
+    expect(((await enabled.json()) as { plugin: { enabled: boolean } }).plugin.enabled).toBe(true);
+
+    const added = await request("/v1/blocks", {
+      method: "POST",
+      body: JSON.stringify({ pluginId: "social-links", blockType: "social-links", config: { links: [{ label: "Site", url: "https://example.com" }] } }),
+    }, aliceId);
+    expect(added.status).toBe(201);
+
+    // The block is public only because the plugin is installed and enabled; the
+    // public page read model carries it for the visitor.
+    const page = await request("/v1/public/alice");
+    const { blocks } = (await page.json()) as { blocks: { pluginId: string; blockType: string }[] };
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({ pluginId: "social-links", blockType: "social-links" });
+  });
+
+  test("a block cannot be added while its plugin is disabled, and settings are validated", async () => {
+    // Bob never installed the plugin, so he cannot add one of its blocks.
+    const bobInstall = await request("/v1/plugins/social-links/install", { method: "POST" }, bobId);
+    expect(bobInstall.status).toBe(200);
+    const blocked = await request("/v1/blocks", {
+      method: "POST",
+      body: JSON.stringify({ pluginId: "social-links", blockType: "social-links" }),
+    }, bobId);
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toEqual({ error: "plugin_disabled" });
+
+    // Settings must be a JSON object; an array is rejected at the boundary.
+    const badSettings = await request("/v1/plugins/social-links/settings", { method: "PUT", body: JSON.stringify([1, 2, 3]) }, aliceId);
+    expect(badSettings.status).toBe(422);
+    expect(await badSettings.json()).toEqual({ error: "invalid_input" });
+  });
+
+  test("a creator cannot install a plugin outside the allowlist", async () => {
+    const response = await request("/v1/plugins/ghost/install", { method: "POST" }, aliceId);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
   });
 
   test("unknown errors do not leak internals", async () => {

@@ -32,6 +32,7 @@
         "@biova/page": "workspace:*",
         "@biova/payments": "workspace:*",
         "@biova/plugin-registry": "workspace:*",
+        "@biova/plugin-social-links": "workspace:*",
         "@biova/products": "workspace:*",
         "@biova/shared": "workspace:*",
         "@elysiajs/cors": "1.4.3",
@@ -113,6 +114,7 @@
         "@biova/orders": "workspace:*",
         "@biova/page": "workspace:*",
         "@biova/payments": "workspace:*",
+        "@biova/plugins": "workspace:*",
         "@biova/products": "workspace:*",
         "@biova/shared": "workspace:*",
         "@biova/storage": "workspace:*",
@@ -243,6 +245,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@biova/plugin-sdk": "workspace:*",
+        "@biova/shared": "workspace:*",
       },
       "devDependencies": {
         "typescript": "5.9.3",
@@ -251,6 +254,9 @@
     "packages/plugin-sdk": {
       "name": "@biova/plugin-sdk",
       "version": "0.1.0",
+      "dependencies": {
+        "@biova/shared": "workspace:*",
+      },
       "devDependencies": {
         "@types/react": "^19.2.7",
         "react": "19.3.0",
@@ -258,6 +264,21 @@
       },
       "peerDependencies": {
         "react": ">=19",
+      },
+    },
+    "packages/plugins": {
+      "name": "@biova/plugins",
+      "version": "0.1.0",
+      "dependencies": {
+        "@biova/database": "workspace:*",
+        "@biova/shared": "workspace:*",
+        "drizzle-orm": "0.45.4",
+      },
+      "devDependencies": {
+        "@biova/creator": "workspace:*",
+        "@biova/page": "workspace:*",
+        "@electric-sql/pglite": "0.5.16",
+        "typescript": "5.9.3",
       },
     },
     "packages/products": {
@@ -301,6 +322,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@biova/plugin-sdk": "workspace:*",
+        "@biova/shared": "workspace:*",
         "react": "19.3.0",
       },
       "devDependencies": {
@@ -391,6 +413,8 @@
     "@biova/plugin-sdk": ["@biova/plugin-sdk@workspace:packages/plugin-sdk"],
 
     "@biova/plugin-social-links": ["@biova/plugin-social-links@workspace:plugins/social-links"],
+
+    "@biova/plugins": ["@biova/plugins@workspace:packages/plugins"],
 
     "@biova/products": ["@biova/products@workspace:packages/products"],
 

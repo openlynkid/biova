@@ -194,9 +194,20 @@ a build step that requires `DATABASE_URL`.
 - `packages/payments`: `PaymentProvider` abstraction with a Midtrans adapter
   (sha512 signature verification) and a fake provider for tests and local
   development. `core` picks the provider from the environment.
-- `packages/plugin-sdk`: stable plugin contracts (`BiovaPlugin`,
-  `ErasedPageBlockDefinition`).
-- `packages/plugin-registry`: build-time catalog + runtime activation resolver.
+- `packages/plugins`: the plugin domain. Owns `plugins` (catalog),
+  `plugin_installations`, `plugin_settings` and `page_blocks`; exports a
+  repository and `createPluginService` returning `Result`. Reads the build-time
+  allowlist through a `PluginCatalog` port (`get`/`list`), so it imports no
+  plugin package and no UI framework. Install/enable/grant are separate calls and
+  the public read model is filtered in SQL to blocks whose plugin is installed
+  and enabled. `PluginContext` carries no DB or secret.
+- `packages/plugin-sdk`: the public plugin contract. Re-exports the manifest and
+  permission types from `@biova/shared/plugin` and adds only the React pieces
+  (`BiovaPlugin`, `PageBlockDefinition`, `PluginContext`) plus the reserved
+  `ExternalPluginHost` interface (no in-process implementation).
+- `packages/plugin-registry`: validates every manifest against the shared schema,
+  holds the executable plugins and resolves the enabled set. The allowlist is
+  built in `apps/web/src/plugins.ts` and passed to `createServices`.
 - `packages/database`: Drizzle schema, connection (`db`), migrations. Subpath
   exports: `./schema`, `./types` (side-effect free `Database` type),
   `./testing` (PGlite helper).
@@ -281,7 +292,27 @@ a build step that requires `DATABASE_URL`.
   creator id from the browser. `getDashboard` returns `null` for anonymous
   visitors so the route can render the sign-in panel instead of throwing.
 - Server function payloads must be serializable. Map domain rows (which carry
-  `Date` columns) to plain objects before returning them from a handler.
+  `Date` columns) to plain objects before returning them from a handler. Plugin
+  settings and block configs use the `JsonValue` union from `@biova/shared/plugin`
+  (not `Record<string, unknown>`) for the same reason: a value the transport
+  cannot carry must fail validation, not at render.
+- The plugin allowlist is `apps/web/src/plugins.ts`; it is the only place that
+  imports a `BiovaPlugin` package into the host. The plugin domain reads manifests
+  through the `PluginCatalog` port, so never import a plugin package or a UI
+  framework from `packages/plugins` or `apps/api`.
+- A page block stores a plugin id and block type, never a component. Map it to
+  code only in the host (`apps/web/src/plugin-blocks.tsx` / the dashboard), and
+  render nothing for an unknown plugin or type, so a stored config can never
+  choose which code runs.
+- Install, enable and grant are separate creator actions. Do not make enabling a
+  plugin grant its permissions, and do not let a grant exceed the manifest's
+  declared permissions — `grantPermission` rejects an undeclared one.
+- The public block read model (`listPublicBlocks`) is filtered in SQL by the
+  creator's installation. Never render blocks from `listBlocks` on the public
+  page; that set is the creator-facing view.
+- External plugins are not run in-process. `ExternalPluginHost` in
+  `@biova/plugin-sdk` is the reserved interface; keep the default a refusal rather
+  than an in-process fallback. See `docs/adr/0014-plugin-system.md`.
 - Better Auth uses a dynamic `baseURL` (`allowedHosts` + `protocol: "auto"`).
   `BETTER_AUTH_ALLOWED_HOSTS` overrides the allowlist; the development default is
   `localhost`, `127.0.0.1` and `*.all-hands.dev`. Production has no default, so

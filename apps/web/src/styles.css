@@ -92,3 +92,18 @@
 .download-group .eyebrow{margin-bottom:2px}
 .access-panel .row{background:#111a15;border-color:#243029}
 .access-panel .intro{margin:14px 0 0;font-size:13px}
+
+/* Plugin dashboard: permissions, page blocks, and public block rendering */
+.permission-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip.on{color:#9be6c2;border-color:#274135;background:#12211a}
+.block-editor{margin-top:22px;padding-top:20px;border-top:1px solid #24262d}
+.block-editor .rows{margin-top:14px}
+.block-list{display:flex;flex-direction:column;gap:11px;max-width:640px;padding-bottom:40px}
+.social-links-block{display:flex;flex-wrap:wrap;gap:9px}
+.social-links-block a{display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border:1px solid #292b34;border-radius:9px;background:#111318;color:#f4f4f5;text-decoration:none;font-size:13px}
+.social-links-block a:hover{border-color:#8298ff}
+.themed .social-links-block a{border-color:color-mix(in srgb,var(--page-text) 18%,transparent)}
+.settings-editor{display:flex;align-items:flex-end;gap:8px;margin-top:10px;flex-wrap:wrap}
+.settings-editor label{display:flex;flex-direction:column;gap:6px;font-size:10px;letter-spacing:1.4px;color:#8f929e;text-transform:uppercase}
+.settings-editor textarea{background:#111318;border:1px solid #292b34;border-radius:8px;padding:9px 10px;color:#f4f4f5;font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;min-width:260px;resize:vertical}
+.settings-editor textarea:focus{outline:none;border-color:#8298ff}

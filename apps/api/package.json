@@ -21,6 +21,7 @@
     "@biova/payments": "workspace:*",
     "@biova/products": "workspace:*",
     "@biova/plugin-registry": "workspace:*",
+    "@biova/plugin-social-links": "workspace:*",
     "@biova/shared": "workspace:*",
     "@elysiajs/cors": "1.4.3",
     "drizzle-orm": "0.45.4",

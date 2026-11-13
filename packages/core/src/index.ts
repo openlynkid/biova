@@ -21,6 +21,8 @@ import { createOrderRepository, createOrderService, type OrderService } from "@b
 import { createFakeProvider, createMidtransProvider, type PaymentProvider } from "@biova/payments";
 import { createDeliveryService, type DeliveryService } from "@biova/delivery";
 import { createAnalyticsRepository, createAnalyticsService, type AnalyticsService } from "@biova/analytics";
+import { createPluginRepository, createPluginService, type PluginService } from "@biova/plugins";
+import type { PluginCatalog, PluginSettings } from "@biova/shared";
 import {
   createNotificationRepository,
   createNotificationService,
@@ -30,6 +32,13 @@ import {
 } from "@biova/notifications";
 import { createLocalStorage, type BlobStorage } from "@biova/storage";
 import { DOWNLOAD_TOKEN_TTL_SECONDS, MAX_ASSET_BYTES, pageThemeSchema, readEnv, type PageTheme } from "@biova/shared";
+
+// The catalog a process gets when no allowlist is supplied. A deployment passes
+// the real registry; tests and the API may build services without one.
+const EMPTY_PLUGIN_CATALOG: PluginCatalog = {
+  get: () => undefined,
+  list: () => [],
+};
 
 export interface BiovaServices {
   creators: CreatorService;
@@ -41,6 +50,7 @@ export interface BiovaServices {
   delivery: DeliveryService;
   analytics: AnalyticsService;
   notifications: NotificationService;
+  plugins: PluginService;
 }
 
 // Where a notification links back to. Read from configuration (never from a
@@ -101,6 +111,9 @@ export interface CreateServicesOptions {
   notificationProvider?: NotificationProvider;
   // Public site origin used in notification links. Defaults to APP_URL.
   siteUrl?: string;
+  // The build-time plugin allowlist. The web app passes the real registry; other
+  // callers (tests, the API) may pass a catalog, or nothing for an empty one.
+  pluginCatalog?: PluginCatalog;
 }
 
 export function createServices(db: Database, options: CreateServicesOptions = {}): BiovaServices {
@@ -135,6 +148,14 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
       },
       siteUrl: options.siteUrl ?? readEnv("APP_URL") ?? "http://localhost:3000",
     },
+  );
+
+  // The plugin domain reads the build-time allowlist through the catalog port.
+  // It owns installations, settings and page blocks; it never imports a plugin
+  // package or a UI framework, so it is safe to build in the API process too.
+  const plugins = createPluginService(
+    createPluginRepository(db),
+    options.pluginCatalog ?? EMPTY_PLUGIN_CATALOG,
   );
 
   // Checkout resolves the product through this function, so the price always
@@ -207,7 +228,7 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
     },
   );
 
-  return { creators, pages, links, products, assets, orders, delivery, analytics, notifications };
+  return { creators, pages, links, products, assets, orders, delivery, analytics, notifications, plugins };
 }
 
 // Resolves the creator behind a published public page. Analytics ingest needs
@@ -248,6 +269,9 @@ export interface PublicPage {
   links: Pick<Link, "id" | "title" | "url" | "description" | "icon">[];
   // Only published products are exposed; drafts and archived items never leak.
   products: PublicProduct[];
+  // Page blocks contributed by installed and enabled plugins, in page order.
+  // Already filtered by the plugin domain, so the renderer trusts this list.
+  blocks: { id: string; pluginId: string; blockType: string; config: PluginSettings }[];
 }
 
 // Read model for the public page. Returns undefined unless the creator exists
@@ -261,6 +285,7 @@ export async function getPublicPage(services: BiovaServices, slug: string): Prom
 
   const links = await services.links.list(creator.id);
   const products = await services.products.listPublished(creator.id);
+  const blocks = await services.plugins.listPublicBlocks(creator.id, page.id);
 
   // Stored theme may predate the current schema; ignore unknown keys rather than
   // failing the page, and only expose the values the renderer understands.
@@ -273,5 +298,6 @@ export async function getPublicPage(services: BiovaServices, slug: string): Prom
       .filter((link) => link.enabled)
       .map(({ id, title, url, description, icon }) => ({ id, title, url, description, icon })),
     products: products.map(({ id, slug, title, description, priceIdr }) => ({ id, slug, title, description, priceIdr })),
+    blocks,
   };
 }

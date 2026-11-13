@@ -2,6 +2,7 @@
 // Idempotent: re-running replaces the demo creator's links, products and page.
 import { db, schema } from "@biova/database";
 import { createServices, type BiovaServices } from "@biova/core";
+import { socialLinksManifest } from "@biova/plugin-social-links/manifest";
 
 const DEMO = {
   userId: "demo-user-0000000000000000",
@@ -34,7 +35,14 @@ const PRODUCTS = [
   },
 ];
 
-const services: BiovaServices = createServices(db);
+// The seed uses the same manifest the web allowlist registers, so the demo page
+// exercises the real install → enable → block flow rather than a shortcut.
+const services: BiovaServices = createServices(db, {
+  pluginCatalog: {
+    get: (id) => (id === socialLinksManifest.id ? socialLinksManifest : undefined),
+    list: () => [socialLinksManifest],
+  },
+});
 
 async function ensureDemoUser() {
   await db
@@ -93,10 +101,27 @@ async function main() {
     if (!uploaded.ok) throw new Error(`failed to attach asset: ${uploaded.error}`);
   }
 
+  const page = await services.pages.ensurePage(creator.id);
+  const installed = await services.plugins.install(creator.id, socialLinksManifest.id);
+  if (!installed.ok) throw new Error(`failed to install plugin: ${installed.error}`);
+  const enabled = await services.plugins.setEnabled(creator.id, socialLinksManifest.id, true);
+  if (!enabled.ok) throw new Error(`failed to enable plugin: ${enabled.error}`);
+  for (const block of await services.plugins.listBlocks(creator.id, page.id).then((result) => (result.ok ? result.value : []))) {
+    await services.plugins.removeBlock(creator.id, block.id);
+  }
+  const block = await services.plugins.addBlock({
+    creatorId: creator.id,
+    pageId: page.id,
+    pluginId: socialLinksManifest.id,
+    blockType: "social-links",
+    config: { links: [{ label: "Newsletter", url: "https://example.com/newsletter" }] },
+  });
+  if (!block.ok) throw new Error(`failed to add block: ${block.error}`);
+
   const published = await services.pages.setStatus(creator.id, "published");
   if (!published.ok) throw new Error(`failed to publish page: ${published.error}`);
 
-  console.log(`Seeded demo creator "${DEMO.slug}" with ${LINKS.length} links and ${PRODUCTS.length} products (published, with files).`);
+  console.log(`Seeded demo creator "${DEMO.slug}" with ${LINKS.length} links, ${PRODUCTS.length} products (published, with files) and an enabled ${socialLinksManifest.id} block.`);
 }
 
 await main();

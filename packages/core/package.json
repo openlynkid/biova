@@ -22,6 +22,7 @@
     "@biova/delivery": "workspace:*",
     "@biova/storage": "workspace:*",
     "@biova/analytics": "workspace:*",
+    "@biova/plugins": "workspace:*",
     "@biova/notifications": "workspace:*"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { getPublicPage, resolvePublishedCreatorId, type BiovaServices } from "@biova/core";
-import { analyticsRangeSchema, type RateLimiter } from "@biova/shared";
+import { analyticsRangeSchema, pluginPermissionSchema, pluginSettingsSchema, type RateLimiter } from "@biova/shared";
 
 export interface SessionUser {
   id: string;
@@ -36,6 +36,9 @@ const STATUS_BY_ERROR: Record<string, number> = {
   storage_unavailable: 503,
   invalid_token: 401,
   unavailable: 404,
+  not_installed: 409,
+  permission_not_declared: 422,
+  plugin_disabled: 409,
 };
 
 function errorResponse(set: { status?: number | string }, error: string) {
@@ -523,6 +526,186 @@ export function createApp(deps: AppDeps) {
       // Gateways retry on any non-2xx, so a duplicate or ignored delivery is
       // still acknowledged as accepted.
       return { outcome: result.value.outcome };
+    })
+
+    // Plugins. A creator installs from the allowlist, then explicitly enables
+    // and grants permissions; nothing is active by default. The creator id comes
+    // from the session, so one creator can never touch another's installations.
+    .get("/v1/plugins", async ({ request, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      return { plugins: await auth.services.plugins.listForCreator(auth.creator.id) };
+    })
+    .post("/v1/plugins/:id/install", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const result = await auth.services.plugins.install(auth.creator.id, params.id);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { plugin: result.value };
+    })
+    .delete("/v1/plugins/:id", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const result = await auth.services.plugins.uninstall(auth.creator.id, params.id);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { pluginId: result.value.pluginId };
+    })
+    .put("/v1/plugins/:id/enabled", async ({ request, params, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as { enabled?: unknown };
+      const result = await auth.services.plugins.setEnabled(auth.creator.id, params.id, payload.enabled === true);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { plugin: result.value };
+    })
+    // Permission changes are their own endpoints so a grant or revoke is an
+    // explicit creator action, never a side effect of enabling a plugin.
+    .put("/v1/plugins/:id/permissions", async ({ request, params, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as { grant?: unknown; revoke?: unknown };
+      const grant = payload.grant === undefined ? undefined : pluginPermissionSchema.safeParse(payload.grant);
+      const revoke = payload.revoke === undefined ? undefined : pluginPermissionSchema.safeParse(payload.revoke);
+      if (grant && !grant.success) {
+        set.status = 422;
+        return { error: "invalid_input" };
+      }
+      if (revoke && !revoke.success) {
+        set.status = 422;
+        return { error: "invalid_input" };
+      }
+      if (grant) {
+        const result = await auth.services.plugins.grantPermission(auth.creator.id, params.id, grant.data);
+        if (!result.ok) return errorResponse(set, result.error);
+        return { plugin: result.value };
+      }
+      if (revoke) {
+        const result = await auth.services.plugins.revokePermission(auth.creator.id, params.id, revoke.data);
+        if (!result.ok) return errorResponse(set, result.error);
+        return { plugin: result.value };
+      }
+      set.status = 422;
+      return { error: "invalid_input" };
+    })
+    .put("/v1/plugins/:id/settings", async ({ request, params, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const parsedSettings = pluginSettingsSchema.safeParse(body ?? {});
+      if (!parsedSettings.success) {
+        set.status = 422;
+        return { error: "invalid_input" };
+      }
+      const result = await auth.services.plugins.updateSettings(auth.creator.id, params.id, parsedSettings.data);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { plugin: result.value };
+    })
+    .get("/v1/blocks", async ({ request, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const page = await auth.services.pages.ensurePage(auth.creator.id);
+      const result = await auth.services.plugins.listBlocks(auth.creator.id, page.id);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { blocks: result.value };
+    })
+    .post("/v1/blocks", async ({ request, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as Record<string, unknown>;
+      const parsedConfig = pluginSettingsSchema.safeParse(payload.config ?? {});
+      if (!parsedConfig.success) {
+        set.status = 422;
+        return { error: "invalid_input" };
+      }
+      const page = await auth.services.pages.ensurePage(auth.creator.id);
+      const result = await auth.services.plugins.addBlock({
+        creatorId: auth.creator.id,
+        pageId: page.id,
+        pluginId: String(payload.pluginId ?? ""),
+        blockType: String(payload.blockType ?? ""),
+        config: parsedConfig.data,
+      });
+      if (!result.ok) return errorResponse(set, result.error);
+      set.status = 201;
+      return { block: result.value };
+    })
+    .patch("/v1/blocks/:id", async ({ request, params, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as Record<string, unknown>;
+      const parsedConfig = payload.config === undefined ? undefined : pluginSettingsSchema.safeParse(payload.config);
+      if (parsedConfig && !parsedConfig.success) {
+        set.status = 422;
+        return { error: "invalid_input" };
+      }
+      const result = await auth.services.plugins.updateBlock({
+        creatorId: auth.creator.id,
+        blockId: params.id,
+        config: parsedConfig ? parsedConfig.data : undefined,
+        enabled: payload.enabled === undefined ? undefined : Boolean(payload.enabled),
+      });
+      if (!result.ok) return errorResponse(set, result.error);
+      return { block: result.value };
+    })
+    .delete("/v1/blocks/:id", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const result = await auth.services.plugins.removeBlock(auth.creator.id, params.id);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { id: result.value.id };
+    })
+    .put("/v1/blocks/reorder", async ({ request, body, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const payload = (body ?? {}) as { ids?: unknown };
+      const ids = Array.isArray(payload.ids) ? payload.ids.map(String) : [];
+      const page = await auth.services.pages.ensurePage(auth.creator.id);
+      const result = await auth.services.plugins.reorderBlocks(auth.creator.id, page.id, ids);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { ids: result.value.ids };
     })
 
     // Public analytics ingest. No session: the visitor is anonymous by design.

@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { formatPriceIdr } from "@biova/shared/product";
 import { absoluteUrl, creatorPageJsonLd } from "@biova/shared/seo";
 import { getPublicPage } from "../server/public-page";
+import { PluginBlocks } from "../plugin-blocks";
 import { trackEvent } from "../tracking";
 
 export const Route = createFileRoute("/$username")({
@@ -62,7 +63,7 @@ function themeStyle(theme: { accent?: string; background?: string; textColor?: s
 }
 
 function PublicPage() {
-  const { creator, page, links, products } = Route.useLoaderData();
+  const { creator, page, links, products, blocks } = Route.useLoaderData();
   const theme = page.theme ?? {};
 
   // One page_view per mount, reported once for the visitor's browser. The hook
@@ -126,6 +127,7 @@ function PublicPage() {
           ))}
         </section>
       ) : null}
+      <PluginBlocks blocks={blocks} />
       <footer>
         <span>BIOVA</span>
         <Link to="/">Claim your username ↗</Link>

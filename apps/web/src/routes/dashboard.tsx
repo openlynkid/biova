@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { authClient } from "../auth-client";
 import {
+  addBlock,
   createCreator,
   createLink,
   createProduct,
@@ -11,18 +12,29 @@ import {
   getAnalytics,
   getDashboard,
   getSession,
+  installPlugin,
   listProductAssets,
+  removeBlock,
+  reorderBlocks,
   reorderLinks,
   reorderProducts,
   setPageStatus,
+  setPluginEnabled,
+  setPluginPermission,
   setProductStatus,
+  uninstallPlugin,
+  updateBlock,
   updateLink,
   updatePage,
+  updatePluginSettings,
   updateProduct,
   updateProfile,
   uploadProductAsset,
   type AnalyticsDetail,
+  type BlockView,
+  type PluginPanelView,
 } from "../server/dashboard";
+import { pluginRegistry } from "../plugins";
 import { formatPriceIdr } from "@biova/shared/product";
 import { formatBytes, type AssetView } from "@biova/shared/asset";
 import type { AnalyticsRange } from "@biova/shared";
@@ -146,7 +158,7 @@ function Onboarding() {
 
 function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeof getDashboard>>>; email: string }) {
   const router = useRouter();
-  const { creator, page, links, products, orders, analytics, analyticsDays } = data;
+  const { creator, page, links, products, orders, analytics, analyticsDays, plugins, blocks } = data;
   const published = page?.status === "published";
   const [error, setError] = useState<string | null>(null);
   // The range control re-reads summary and daily chart together. The loader
@@ -193,6 +205,7 @@ function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeo
       <PageForm page={page} onSave={(payload) => run(async () => updatePage({ data: payload }))} />
       <LinksEditor links={links} onError={setError} />
       <ProductsEditor products={products} onError={setError} />
+      <PluginsPanel plugins={plugins} blocks={blocks} onError={setError} />
     </Shell>
   );
 }
@@ -750,4 +763,166 @@ function ProductRowItem({
       ) : null}
     </li>
   );
+}
+
+function PluginsPanel({ plugins, blocks, onError }: { plugins: PluginPanelView[]; blocks: BlockView[]; onError: (message: string | null) => void }) {
+  const router = useRouter();
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function run(pluginId: string, action: () => Promise<{ ok: boolean; error?: string }>) {
+    onError(null);
+    setBusyId(pluginId);
+    const result = await action();
+    setBusyId(null);
+    if (!result.ok) onError(result.error ?? "Something went wrong");
+    await router.invalidate();
+  }
+
+  return (
+    <section className="panel">
+      <div className="eyebrow">PLUGINS ({plugins.filter((plugin) => plugin.enabled).length} ACTIVE)</div>
+      <p className="intro">Plugins are off until you enable them, and each capability is granted separately.</p>
+      <ul className="rows">
+        {plugins.map((plugin) => (
+          <li key={plugin.manifest.id} className={plugin.enabled ? "row" : "row disabled"}>
+            <span className="row-icon">{plugin.manifest.icon ?? "◇"}</span>
+            <div className="row-body">
+              <strong>{plugin.manifest.name} <small>v{plugin.manifest.version}</small></strong>
+              <small>{plugin.manifest.description}</small>
+              {plugin.installed ? (
+                <>
+                  <div className="permission-list">
+                    {plugin.manifest.permissions.map((permission) => {
+                      const granted = plugin.grantedPermissions.includes(permission);
+                      return (
+                        <button
+                          key={permission}
+                          type="button"
+                          className={granted ? "chip on" : "chip"}
+                          disabled={busyId === plugin.manifest.id}
+                          onClick={() => void run(plugin.manifest.id, () => setPluginPermission({ data: { pluginId: plugin.manifest.id, permission, granted: !granted } }))}
+                        >
+                          {granted ? "✓ " : ""}{permission}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <PluginSettingsEditor plugin={plugin} onSave={(settings) => run(plugin.manifest.id, () => updatePluginSettings({ data: { pluginId: plugin.manifest.id, settings } }))} />
+                </>
+              ) : null}
+            </div>
+            <div className="row-actions">
+              {!plugin.installed ? (
+                <button type="button" className="chip" disabled={busyId === plugin.manifest.id} onClick={() => void run(plugin.manifest.id, () => installPlugin({ data: { pluginId: plugin.manifest.id } }))}>Install</button>
+              ) : (
+                <>
+                  <button type="button" className="chip" disabled={busyId === plugin.manifest.id} onClick={() => void run(plugin.manifest.id, () => setPluginEnabled({ data: { pluginId: plugin.manifest.id, enabled: !plugin.enabled } }))}>{plugin.enabled ? "Disable" : "Enable"}</button>
+                  <button type="button" className="chip danger" disabled={busyId === plugin.manifest.id} onClick={() => void run(plugin.manifest.id, () => uninstallPlugin({ data: { pluginId: plugin.manifest.id } }))}>Uninstall</button>
+                </>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {plugins.length === 0 ? <p className="intro">No plugins are available in this build.</p> : null}
+
+      <BlocksEditor plugins={plugins} blocks={blocks} onError={onError} />
+    </section>
+  );
+}
+
+// Plugin-level settings are opaque JSON owned by the plugin, so the editor is a
+// plain JSON field rather than a schema-driven form.
+function PluginSettingsEditor({ plugin, onSave }: { plugin: PluginPanelView; onSave: (settings: Record<string, unknown>) => Promise<void> }) {
+  const [value, setValue] = useState(() => JSON.stringify(plugin.settings ?? {}));
+  return (
+    <form
+      className="settings-editor"
+      onSubmit={(e) => { e.preventDefault(); void onSave(parseConfig(value)); }}
+    >
+      <label>Settings (JSON)<textarea value={value} onChange={(e) => setValue(e.target.value)} rows={2} /></label>
+      <button type="button" className="chip" onClick={() => void onSave(parseConfig(value))}>Save settings</button>
+    </form>
+  );
+}
+
+function BlocksEditor({ plugins, blocks, onError }: { plugins: PluginPanelView[]; blocks: BlockView[]; onError: (message: string | null) => void }) {
+  const router = useRouter();
+  const [selected, setSelected] = useState("");
+  const [draft, setDraft] = useState("{}");
+
+  // Only an enabled plugin that offers page blocks can add one, and each block
+  // type it declares becomes an option here.
+  const installable = plugins.filter((plugin) => plugin.installed && plugin.enabled && plugin.manifest.extensions.pageBlocks);
+
+  async function run(action: () => Promise<{ ok: boolean; error?: string }>) {
+    onError(null);
+    const result = await action();
+    if (!result.ok) onError(result.error ?? "Something went wrong");
+    await router.invalidate();
+  }
+
+  async function move(index: number, direction: -1 | 1) {
+    const next = [...blocks];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    await run(() => reorderBlocks({ data: { ids: next.map((block) => block.id) } }));
+  }
+
+  return (
+    <div className="block-editor">
+      <div className="eyebrow">PAGE BLOCKS ({blocks.length})</div>
+      {installable.length > 0 ? (
+        <form
+          className="form inline"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const [pluginId, blockType] = selected.split(":");
+            if (!pluginId || !blockType) return;
+            void run(() => addBlock({ data: { pluginId, blockType, config: parseConfig(draft) } }));
+          }}
+        >
+          <label>Block
+            <select value={selected} onChange={(e) => setSelected(e.target.value)} required>
+              <option value="">Choose a block…</option>
+              {installable.flatMap((plugin) => pluginBlockTypes(plugin).map((type) => (
+                <option key={`${plugin.manifest.id}:${type}`} value={`${plugin.manifest.id}:${type}`}>{plugin.manifest.name} · {type}</option>
+              )))}
+            </select>
+          </label>
+          <label>Config (JSON)<textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} /></label>
+          <button className="button primary" type="submit">Add block</button>
+        </form>
+      ) : <p className="intro">Install and enable a plugin that provides blocks to add one.</p>}
+      <ul className="rows">
+        {blocks.map((block, index) => (
+          <li key={block.id} className={block.enabled ? "row" : "row disabled"}>
+            <div className="row-body">
+              <strong>{block.pluginId} · {block.blockType}</strong>
+              <small>{JSON.stringify(block.config)}</small>
+            </div>
+            <div className="row-actions">
+              <button type="button" className="chip" onClick={() => void move(index, -1)} disabled={index === 0} aria-label="Move up">↑</button>
+              <button type="button" className="chip" onClick={() => void move(index, 1)} disabled={index === blocks.length - 1} aria-label="Move down">↓</button>
+              <button type="button" className="chip" onClick={() => void run(() => updateBlock({ data: { blockId: block.id, enabled: !block.enabled } }))}>{block.enabled ? "Hide" : "Show"}</button>
+              <button type="button" className="chip danger" onClick={() => void run(() => removeBlock({ data: { blockId: block.id } }))}>Delete</button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// The host maps a plugin id to the block types it declares, so the dashboard
+// offers exactly what the plugin provides and nothing more.
+function pluginBlockTypes(plugin: PluginPanelView): string[] {
+  const registered = pluginRegistry.pageBlocks(plugin.manifest.id);
+  return registered.map((definition) => definition.type);
+}
+
+function parseConfig(value: string): Record<string, unknown> {
+  const parsed = JSON.parse(value);
+  return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
 }

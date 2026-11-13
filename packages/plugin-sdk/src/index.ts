@@ -1,24 +1,15 @@
 import type { ComponentType } from "react";
+import type { PluginExtensions, PluginManifest, PluginPermission } from "@biova/shared/plugin";
 
-export type PluginPermission =
-  | "page:read" | "page:write"
-  | "profile:read" | "profile:write"
-  | "commerce:read" | "commerce:write"
-  | "analytics:read";
-
-export interface PluginManifest {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  icon?: string;
-  compatibility: { sdk: string; core: string };
-  permissions: PluginPermission[];
-  extensions: { pageBlocks?: boolean; dashboard?: boolean; api?: boolean; events?: boolean };
-}
+// The manifest and permission types are owned by @biova/shared, so the host, the
+// API and every plugin agree on one definition. This module adds only the pieces
+// that need React: the block component and the plugin's executable shape.
+export type { PluginExtensions, PluginManifest, PluginPermission };
 
 export interface PageBlockProps<TConfig = unknown> {
-  creatorId: string;
+  // Public blocks render for anonymous visitors, so they are handed no creator
+  // identity: a block that needs creator-scoped data must go through the host.
+  creatorId?: string;
   config: TConfig;
   preview?: boolean;
 }
@@ -37,6 +28,9 @@ export interface PageBlockDefinition<TConfig = unknown> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ErasedPageBlockDefinition = PageBlockDefinition<any>;
 
+// What a running plugin is handed. It carries no database handle, no secret and
+// no HTTP client: a plugin reaches platform data only through the host, and only
+// when it holds the matching permission. See ADR-0014.
 export interface PluginContext {
   readonly pluginId: string;
   readonly creatorId: string;
@@ -49,4 +43,15 @@ export interface BiovaPlugin {
   pageBlocks?: ErasedPageBlockDefinition[];
   activate?(context: PluginContext): Promise<void> | void;
   deactivate?(context: PluginContext): Promise<void> | void;
+}
+
+// Reserved for the external marketplace. An external plugin is not an in-process
+// module: it is a signed artifact the host runs in a sandbox or an isolated
+// service and reaches only through capability-scoped calls. There is no
+// in-process implementation on purpose — the host must refuse to run an external
+// plugin rather than fall back to importing its code. See ADR-0014.
+export interface ExternalPluginHost {
+  readonly kind: "sandbox" | "isolated-service";
+  load(pluginId: string, context: PluginContext): Promise<void>;
+  unload(pluginId: string): Promise<void>;
 }

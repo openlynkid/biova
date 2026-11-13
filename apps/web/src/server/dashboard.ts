@@ -20,9 +20,15 @@ import {
   productPriceSchema,
   formatBytes,
   analyticsRangeSchema,
+  pluginIdSchema,
+  pluginPermissionSchema,
+  pluginSettingsSchema,
   type AnalyticsRange,
   type AssetView,
   type PageTheme,
+  type PluginManifest,
+  type PluginPermission,
+  type PluginSettings,
 } from "@biova/shared";
 
 // Resolve the signed-in user from the incoming request cookies. Runs on the
@@ -93,6 +99,22 @@ export interface AnalyticsDayView {
   revenueIdr: number;
 }
 
+export interface PluginPanelView {
+  manifest: PluginManifest;
+  installed: boolean;
+  enabled: boolean;
+  grantedPermissions: PluginPermission[];
+  settings: PluginSettings;
+}
+
+export interface BlockView {
+  id: string;
+  pluginId: string;
+  blockType: string;
+  config: PluginSettings;
+  enabled: boolean;
+}
+
 export interface DashboardData {
   creator: {
     id: string;
@@ -106,6 +128,8 @@ export interface DashboardData {
   orders: OrderView[];
   analytics: AnalyticsView;
   analyticsDays: AnalyticsDayView[];
+  plugins: PluginPanelView[];
+  blocks: BlockView[];
 }
 
 // The dashboard loader: one round trip for creator, page and links.
@@ -120,9 +144,11 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
   const links = await services.links.list(creator.id);
   const products = await services.products.list(creator.id);
   const orders = await services.orders.listByCreator(creator.id);
-  const [analytics, timeseries] = await Promise.all([
+  const [analytics, timeseries, plugins, blocks] = await Promise.all([
     services.analytics.summary(creator.id, "30d"),
     services.analytics.timeseries(creator.id, "30d"),
+    services.plugins.listForCreator(creator.id),
+    services.plugins.listBlocks(creator.id, page.id),
   ]);
 
   return {
@@ -142,6 +168,8 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
     })),
     analytics,
     analyticsDays: timeseries.days,
+    plugins: plugins.map(toPluginView),
+    blocks: blocks.ok ? blocks.value.map(toBlockView) : [],
   };
 });
 
@@ -174,6 +202,40 @@ export const getAnalytics = createServerFn({ method: "GET" })
     ]);
     return { summary, days: timeseries.days };
   });
+
+function toPluginView(plugin: {
+  manifest: PluginManifest;
+  installed: boolean;
+  enabled: boolean;
+  grantedPermissions: PluginPermission[];
+  settings: PluginSettings;
+}): PluginPanelView {
+  return {
+    manifest: plugin.manifest,
+    installed: plugin.installed,
+    enabled: plugin.enabled,
+    grantedPermissions: plugin.grantedPermissions,
+    settings: plugin.settings,
+  };
+}
+
+function toBlockView(block: {
+  id: string;
+  pluginId: string;
+  blockType: string;
+  config: Record<string, unknown>;
+  enabled: boolean;
+}): BlockView {
+  return {
+    id: block.id,
+    pluginId: block.pluginId,
+    blockType: block.blockType,
+    // Stored JSON is written through the settings schema, so it is the
+    // serializable subset by construction.
+    config: block.config as PluginSettings,
+    enabled: block.enabled,
+  };
+}
 
 // Service failures are returned as a small error code the UI can show; the
 // message never includes internals.
@@ -433,3 +495,101 @@ export const reorderProductAssets = createServerFn({ method: "POST" })
 
 // Human-readable size for the upload list.
 export const assetSizeLabel = formatBytes;
+
+// --- Plugins and page blocks ----------------------------------------------
+
+export const installPlugin = createServerFn({ method: "POST" })
+  .validator(z.object({ pluginId: pluginIdSchema }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.plugins.install(creator.id, data.pluginId);
+    return result.ok ? { ok: true as const, data: toPluginView(result.value) } : { ok: false as const, error: result.error };
+  });
+
+export const uninstallPlugin = createServerFn({ method: "POST" })
+  .validator(z.object({ pluginId: pluginIdSchema }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.plugins.uninstall(creator.id, data.pluginId);
+    return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
+  });
+
+export const setPluginEnabled = createServerFn({ method: "POST" })
+  .validator(z.object({ pluginId: pluginIdSchema, enabled: z.boolean() }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.plugins.setEnabled(creator.id, data.pluginId, data.enabled);
+    return result.ok ? { ok: true as const, data: toPluginView(result.value) } : { ok: false as const, error: result.error };
+  });
+
+export const setPluginPermission = createServerFn({ method: "POST" })
+  .validator(z.object({ pluginId: pluginIdSchema, permission: pluginPermissionSchema, granted: z.boolean() }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = data.granted
+      ? await services.plugins.grantPermission(creator.id, data.pluginId, data.permission)
+      : await services.plugins.revokePermission(creator.id, data.pluginId, data.permission);
+    return result.ok ? { ok: true as const, data: toPluginView(result.value) } : { ok: false as const, error: result.error };
+  });
+
+export const updatePluginSettings = createServerFn({ method: "POST" })
+  .validator(z.object({ pluginId: pluginIdSchema, settings: pluginSettingsSchema }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.plugins.updateSettings(creator.id, data.pluginId, data.settings);
+    return result.ok ? { ok: true as const, data: toPluginView(result.value) } : { ok: false as const, error: result.error };
+  });
+
+export const addBlock = createServerFn({ method: "POST" })
+  .validator(z.object({ pluginId: pluginIdSchema, blockType: z.string().trim().min(1).max(100), config: pluginSettingsSchema.optional() }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const page = await services.pages.ensurePage(creator.id);
+    const result = await services.plugins.addBlock({
+      creatorId: creator.id,
+      pageId: page.id,
+      pluginId: data.pluginId,
+      blockType: data.blockType,
+      config: data.config,
+    });
+    return result.ok ? { ok: true as const, data: toBlockView(result.value) } : { ok: false as const, error: result.error };
+  });
+
+export const updateBlock = createServerFn({ method: "POST" })
+  .validator(z.object({ blockId: z.uuid(), config: pluginSettingsSchema.optional(), enabled: z.boolean().optional() }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.plugins.updateBlock({
+      creatorId: creator.id,
+      blockId: data.blockId,
+      config: data.config,
+      enabled: data.enabled,
+    });
+    return result.ok ? { ok: true as const, data: toBlockView(result.value) } : { ok: false as const, error: result.error };
+  });
+
+export const removeBlock = createServerFn({ method: "POST" })
+  .validator(z.object({ blockId: z.uuid() }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.plugins.removeBlock(creator.id, data.blockId);
+    return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
+  });
+
+export const reorderBlocks = createServerFn({ method: "POST" })
+  .validator(z.object({ ids: z.array(z.uuid()).min(1).max(100) }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const page = await services.pages.ensurePage(creator.id);
+    const result = await services.plugins.reorderBlocks(creator.id, page.id, data.ids);
+    return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
+  });

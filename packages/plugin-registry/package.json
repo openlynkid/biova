@@ -1,1 +1,20 @@
-{ "name": "@biova/plugin-registry", "version": "0.1.0", "private": true, "type": "module", "exports": { ".": "./src/index.ts" }, "dependencies": { "@biova/plugin-sdk": "workspace:*" }, "scripts": { "typecheck": "tsc --noEmit", "test": "bun test" }, "devDependencies": { "typescript": "5.9.3" } }
+{
+  "name": "@biova/plugin-registry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@biova/plugin-sdk": "workspace:*",
+    "@biova/shared": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

@@ -7,6 +7,7 @@ export * from "./asset";
 export * from "./seo";
 export * from "./analytics";
 export * from "./notification";
+export * from "./plugin";
 export * from "./result";
 export * from "./rate-limit";
 export * from "./env";

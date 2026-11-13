@@ -9,6 +9,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@biova/shared": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "5.9.3",
     "react": "19.3.0",

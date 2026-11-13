@@ -240,9 +240,44 @@ explicit `Buy now` affordance. See `docs/adr/0010-page-analytics.md`,
 
 ## Plugin model
 
-1. Build-time registration: import approved plugin packages in `apps/web/src/plugins.ts`.
-2. Runtime activation: read the creator's installation state from the database and expose only enabled capabilities.
-3. External plugins: do not load arbitrary npm packages or execute uploaded JavaScript inside the Bun process. Future external plugins must use a signed artifact pipeline plus isolated workers/sandbox and capability-scoped APIs.
+The plugin system has a build-time half and a runtime half, joined by one
+contract. `PluginManifest`, `PluginPermission` and `PluginExtensions` are zod
+schemas in `@biova/shared/plugin`; the SDK re-exports them and adds only the
+React pieces, and the registry validates every manifest against the same schema.
+There is one definition of a plugin and the host, the API and every plugin read
+it from the same place.
+
+Build-time, the allowlist lives in `apps/web/src/plugins.ts`, which registers the
+approved `BiovaPlugin` packages into a registry and passes it to
+`createServices` as a `PluginCatalog`. Adding a plugin is a new import and a new
+deployment, never a runtime download. The plugin domain reads that catalog
+through the port, so it never imports a plugin package or a UI framework and
+stays buildable in the API process.
+
+Runtime, a creator installs a plugin from the allowlist, then explicitly enables
+it and grants permissions. An install creates the row with `enabled = false` and
+no granted permissions, so installing a plugin never changes a live page, and a
+grant can narrow the manifest's request but never widen it. State lives in
+`plugin_installations` and `plugin_settings`, keyed per creator.
+
+A page block is a row (`plugin_id`, `block_type`, `config`, `sort_order`), never a
+component: the host maps the pair to code through the registry, so a stored
+config cannot choose which code runs, and an unknown block renders nothing. The
+public read model is filtered in SQL to blocks whose plugin the creator has
+installed *and* enabled, so disabling a plugin takes its blocks off the page
+without deleting them.
+
+Isolation is enforced, not just documented. A `PluginContext` carries only the
+plugin id, the creator id and the granted permission set — no database handle, no
+secret, no HTTP client. Block components render for anonymous visitors and get no
+creator identity. Every block operation is scoped by the session creator id.
+External marketplace plugins are not loaded into the Bun process at all:
+`ExternalPluginHost` in `@biova/plugin-sdk` records the intended sandbox /
+isolated-service shape as an interface with no in-process implementation. See
+`docs/adr/0014-plugin-system.md`.
+
+`bun run db:seed` installs and enables the `social-links` plugin for the demo
+creator and adds one block, so the demo page exercises the real flow.
 
 ## Authentication
 

@@ -1,10 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { getEnabledPlugins } from "../plugins";
+import { pluginRegistry } from "../plugins";
 
 export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
-  const plugins = getEnabledPlugins("demo-creator");
+  // The marketing page lists the allowlisted catalog, not a creator's installs:
+  // there is no session here, so the manifests are the honest thing to show.
+  const plugins = pluginRegistry.list();
   return (
     <main className="shell">
       <nav className="nav"><a className="brand" href="/">biova<span>·</span></a><span className="nav-label">CREATOR PLATFORM</span></nav>
@@ -16,7 +18,7 @@ function HomePage() {
       </section>
       <section id="plugins" className="plugin-section">
         <div className="section-heading"><div><div className="eyebrow">EXTEND YOUR SPACE</div><h2>One platform. Modular by design.</h2></div><span className="count">{plugins.length} PLUGIN LOADED</span></div>
-        <div className="plugin-grid">{plugins.map((plugin) => <article className="plugin-card" key={plugin.manifest.id}><div className="plugin-icon">{plugin.manifest.icon ?? "◇"}</div><div><h3>{plugin.manifest.name}</h3><p>{plugin.manifest.description}</p></div><span className="status">READY</span></article>)}</div>
+        <div className="plugin-grid">{plugins.map((plugin) => <article className="plugin-card" key={plugin.id}><div className="plugin-icon">{plugin.icon ?? "◇"}</div><div><h3>{plugin.name}</h3><p>{plugin.description}</p></div><span className="status">READY</span></article>)}</div>
       </section>
       <footer><span>BIOVA FOUNDATION</span><span>BUN · TANSTACK START · ELYSIA</span></footer>
     </main>

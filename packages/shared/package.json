@@ -9,7 +9,8 @@
     "./order": "./src/order.ts",
     "./asset": "./src/asset.ts",
     "./seo": "./src/seo.ts",
-    "./notification": "./src/notification.ts"
+    "./notification": "./src/notification.ts",
+    "./plugin": "./src/plugin.ts"
   },
   "dependencies": {
     "zod": "4.6.7"
