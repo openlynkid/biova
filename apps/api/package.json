@@ -15,6 +15,7 @@
     "@biova/analytics": "workspace:*",
     "@biova/database": "workspace:*",
     "@biova/links": "workspace:*",
+    "@biova/notifications": "workspace:*",
     "@biova/orders": "workspace:*",
     "@biova/page": "workspace:*",
     "@biova/payments": "workspace:*",

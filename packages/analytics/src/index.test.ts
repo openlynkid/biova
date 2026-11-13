@@ -43,6 +43,7 @@ beforeAll(async () => {
     paidOrders: async (id) => (id === creatorId ? { count: 1, revenueIdr: 25000 } : { count: 0, revenueIdr: 0 }),
     paidRevenueByDay: async (id) =>
       id === creatorId ? [{ date: utcDayKey(new Date()), count: 1, revenueIdr: 25000 }] : [],
+    paidRevenueByProduct: async (id) => (id === creatorId ? [{ productId, count: 1, revenueIdr: 25000 }] : []),
   });
 });
 
@@ -80,9 +81,33 @@ describe("analytics service", () => {
     await service.track({ creatorId, type: "product_view", visitorId: VISITOR, productId });
     const summary = await service.summary(creatorId, "30d");
     expect(summary.productViews).toBe(1);
-    expect(summary.products).toEqual([{ productId, title: "Preset", views: 1 }]);
+    expect(summary.products).toEqual([
+      { productId, title: "Preset", views: 1, orders: 1, revenueIdr: 25000, conversionRate: 100 },
+    ]);
     expect(summary.orders).toBe(1);
     expect(summary.revenueIdr).toBe(25000);
+  });
+
+  test("derives average order value and the product-view conversion rate", async () => {
+    // One order over one product view is a 100% conversion; 25,000 over one
+    // order is a 25,000 average order value.
+    const summary = await service.summary(creatorId, "30d");
+    expect(summary.averageOrderValueIdr).toBe(25000);
+    expect(summary.conversionRate).toBe(100);
+  });
+
+  test("reports zero conversion and average order value with no sales", async () => {
+    const quiet = createAnalyticsService(createAnalyticsRepository(context.db), {
+      listLinks: async () => [{ id: linkId, title: "My site" }],
+      listProducts: async () => [{ id: productId, title: "Preset" }],
+      paidOrders: async () => ({ count: 0, revenueIdr: 0 }),
+      paidRevenueByDay: async () => [],
+      paidRevenueByProduct: async () => [],
+    });
+    const summary = await quiet.summary(creatorId, "30d");
+    expect(summary.averageOrderValueIdr).toBe(0);
+    expect(summary.conversionRate).toBe(0);
+    expect(summary.products[0]).toMatchObject({ orders: 0, revenueIdr: 0, conversionRate: 0 });
   });
 
   test("rejects an event with an unknown type or a malformed visitor id", async () => {
@@ -112,6 +137,7 @@ describe("analytics service", () => {
       listProducts: async () => [{ id: productId, title: "Preset" }],
       paidOrders: async () => ({ count: 0, revenueIdr: 0 }),
       paidRevenueByDay: async () => [],
+      paidRevenueByProduct: async () => [],
     }, { now: () => Date.now() + 100 * 24 * 60 * 60 * 1000 });
     const summary = await future.summary(creatorId, "7d");
     expect(summary.pageViews).toBe(0);
@@ -124,6 +150,7 @@ describe("analytics service", () => {
       listProducts: async () => [],
       paidOrders: async () => ({ count: 0, revenueIdr: 0 }),
       paidRevenueByDay: async () => [],
+      paidRevenueByProduct: async () => [],
     }, { now: () => Date.now() + 200 * 24 * 60 * 60 * 1000 });
     const summary = await empty.summary(creatorId, "7d");
     expect(summary.pageViews).toBe(0);

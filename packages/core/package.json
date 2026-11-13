@@ -21,7 +21,8 @@
     "@biova/shared": "workspace:*",
     "@biova/delivery": "workspace:*",
     "@biova/storage": "workspace:*",
-    "@biova/analytics": "workspace:*"
+    "@biova/analytics": "workspace:*",
+    "@biova/notifications": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3"

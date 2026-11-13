@@ -71,8 +71,17 @@ export interface AnalyticsView {
   productViews: number;
   orders: number;
   revenueIdr: number;
+  averageOrderValueIdr: number;
+  conversionRate: number;
   links: { linkId: string; title: string; clicks: number }[];
-  products: { productId: string; title: string; views: number }[];
+  products: {
+    productId: string;
+    title: string;
+    views: number;
+    orders: number;
+    revenueIdr: number;
+    conversionRate: number;
+  }[];
 }
 
 export interface AnalyticsDayView {

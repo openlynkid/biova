@@ -1,0 +1,23 @@
+{
+  "name": "@biova/notifications",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@biova/database": "workspace:*",
+    "@biova/shared": "workspace:*",
+    "drizzle-orm": "0.45.4"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
+    "@biova/creator": "workspace:*",
+    "typescript": "5.9.3"
+  }
+}

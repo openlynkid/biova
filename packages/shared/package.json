@@ -8,7 +8,8 @@
     "./product": "./src/product.ts",
     "./order": "./src/order.ts",
     "./asset": "./src/asset.ts",
-    "./seo": "./src/seo.ts"
+    "./seo": "./src/seo.ts",
+    "./notification": "./src/notification.ts"
   },
   "dependencies": {
     "zod": "4.6.7"

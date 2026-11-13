@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildDailySeries, clickThroughRate, seriesWindow, utcDayKey } from "./analytics";
+import { averageOrderValue, buildDailySeries, clickThroughRate, conversionRate, seriesWindow, utcDayKey } from "./analytics";
 
 describe("clickThroughRate", () => {
   test("is clicks per view as a rounded percentage", () => {
@@ -9,6 +9,28 @@ describe("clickThroughRate", () => {
 
   test("is zero with no views rather than a division by zero", () => {
     expect(clickThroughRate(5, 0)).toBe(0);
+  });
+});
+
+describe("conversionRate", () => {
+  test("is conversions per opportunity as a rounded percentage", () => {
+    expect(conversionRate(1, 4)).toBe(25);
+    expect(conversionRate(2, 3)).toBe(66.7);
+  });
+
+  test("is zero with no opportunities rather than a division by zero", () => {
+    expect(conversionRate(3, 0)).toBe(0);
+  });
+});
+
+describe("averageOrderValue", () => {
+  test("is revenue per order rounded to whole rupiah", () => {
+    expect(averageOrderValue(100000, 3)).toBe(33333);
+    expect(averageOrderValue(49000, 1)).toBe(49000);
+  });
+
+  test("is zero with no orders", () => {
+    expect(averageOrderValue(1000, 0)).toBe(0);
   });
 });
 

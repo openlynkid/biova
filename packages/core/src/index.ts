@@ -21,6 +21,13 @@ import { createOrderRepository, createOrderService, type OrderService } from "@b
 import { createFakeProvider, createMidtransProvider, type PaymentProvider } from "@biova/payments";
 import { createDeliveryService, type DeliveryService } from "@biova/delivery";
 import { createAnalyticsRepository, createAnalyticsService, type AnalyticsService } from "@biova/analytics";
+import {
+  createNotificationRepository,
+  createNotificationService,
+  createRecordingProvider,
+  type NotificationProvider,
+  type NotificationService,
+} from "@biova/notifications";
 import { createLocalStorage, type BlobStorage } from "@biova/storage";
 import { DOWNLOAD_TOKEN_TTL_SECONDS, MAX_ASSET_BYTES, pageThemeSchema, readEnv, type PageTheme } from "@biova/shared";
 
@@ -33,6 +40,17 @@ export interface BiovaServices {
   orders: OrderService;
   delivery: DeliveryService;
   analytics: AnalyticsService;
+  notifications: NotificationService;
+}
+
+// Where a notification links back to. Read from configuration (never from a
+// request host) so an email sent from a preview deploy still points at the real
+// site. The web app owns this value; the API only ever sends from it.
+export function createNotificationProvider(env: (key: string) => string | undefined = readEnv): NotificationProvider {
+  // No transactional email driver is wired yet, so the default records messages
+  // in memory instead of sending them. A deployment sets a real provider here.
+  void env;
+  return createRecordingProvider();
 }
 
 // Pick the payment provider from the environment. Midtrans is used when a
@@ -80,6 +98,9 @@ export interface CreateServicesOptions {
   paymentProvider?: PaymentProvider;
   storage?: BlobStorage;
   downloadTokenSecret?: string;
+  notificationProvider?: NotificationProvider;
+  // Public site origin used in notification links. Defaults to APP_URL.
+  siteUrl?: string;
 }
 
 export function createServices(db: Database, options: CreateServicesOptions = {}): BiovaServices {
@@ -100,6 +121,22 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
     isOwnedProduct: (creatorId, productId) => products.ownsProduct(creatorId, productId),
   });
 
+  // Notifications reach the creator contact through an injected function, so the
+  // domain never imports the creator domain. The service swallows its own send
+  // failures, so wiring it into the order path cannot fail a settled payment.
+  const notifications = createNotificationService(
+    createNotificationRepository(db),
+    options.notificationProvider ?? createNotificationProvider(),
+    {
+      async findCreatorContact(creatorId) {
+        const contact = await creators.getContactById(creatorId);
+        if (!contact) return undefined;
+        return { email: contact.email, displayName: contact.displayName, slug: contact.slug };
+      },
+      siteUrl: options.siteUrl ?? readEnv("APP_URL") ?? "http://localhost:3000",
+    },
+  );
+
   // Checkout resolves the product through this function, so the price always
   // comes from a published row owned by the creator whose slug was requested.
   const orders = createOrderService(
@@ -119,6 +156,7 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
           priceIdr: product.priceIdr,
         };
       },
+      onOrderPaid: (input) => notifications.notifyOrderPaid(input),
     },
     options.paymentProvider ?? createPaymentProvider(),
   );
@@ -165,10 +203,11 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
       },
       paidOrders: (creatorId, since) => orders.paidTotalsSince(creatorId, since),
       paidRevenueByDay: (creatorId, since) => orders.paidRevenueByDay(creatorId, since),
+      paidRevenueByProduct: (creatorId, since) => orders.paidRevenueByProduct(creatorId, since),
     },
   );
 
-  return { creators, pages, links, products, assets, orders, delivery, analytics };
+  return { creators, pages, links, products, assets, orders, delivery, analytics, notifications };
 }
 
 // Resolves the creator behind a published public page. Analytics ingest needs

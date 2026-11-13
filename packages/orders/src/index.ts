@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import {
   orderItems,
   orders,
@@ -16,6 +16,7 @@ import {
   type DailyRevenue,
   type OrderStatus,
   type PaymentStatus,
+  type ProductRevenue,
   type Result,
   ok,
   fail,
@@ -48,6 +49,20 @@ export interface SellableProduct {
 
 export interface OrderDeps {
   findSellableProduct(creatorSlug: string, productSlug: string): Promise<SellableProduct | undefined>;
+  // Called after an order has become paid, for both the free path and the
+  // verified-webhook path. It receives only plain values, so the orders domain
+  // stays unaware of what is done with them (today: a receipt and a sale alert).
+  // A failure here must not fail the payment, so the implementation is expected
+  // to swallow its own errors; the caller also guards with a try/catch.
+  onOrderPaid?: (input: {
+    creatorId: string;
+    orderReference: string;
+    buyerName: string;
+    buyerEmail: string;
+    totalIdr: number;
+    currency: string;
+    items: string[];
+  }) => Promise<void>;
 }
 
 export interface OrderWithItems {
@@ -67,6 +82,9 @@ export interface OrderRepository {
   paidTotalsSince(creatorId: string, since: Date): Promise<{ count: number; revenueIdr: number }>;
   // The same totals split by UTC calendar day, for the analytics trend chart.
   paidRevenueByDay(creatorId: string, since: Date): Promise<DailyRevenue[]>;
+  // Paid orders and revenue per product, for the analytics conversion breakdown.
+  // Products with no sales are absent rather than present as zero.
+  paidRevenueByProduct(creatorId: string, since: Date): Promise<ProductRevenue[]>;
   recordWebhookEvent(args: { provider: string; eventId: string; eventType: string; payload: Record<string, unknown> }): Promise<boolean>;
   upsertPaymentTransaction(args: {
     orderId: string;
@@ -158,6 +176,32 @@ export function createOrderRepository(db: Database): OrderRepository {
         .from(orders)
         .where(and(eq(orders.creatorId, creatorId), eq(orders.status, "paid"), gte(orders.createdAt, since)))
         .groupBy(sql`1`);
+    },
+
+    paidRevenueByProduct(creatorId, since) {
+      // Revenue is attributed to the product snapshot on the order item, and the
+      // order count is distinct so two items of the same product on one order
+      // still count as one order. An item whose product was deleted (the column
+      // is nullable and set to null on delete) has no product to attribute to,
+      // so it is left out of the per-product breakdown; its revenue still counts
+      // in the order totals.
+      return db
+        .select({
+          productId: sql<string>`${orderItems.productId}`,
+          count: sql<number>`count(distinct ${orders.id})::int`,
+          revenueIdr: sql<number>`coalesce(sum(${orderItems.totalPriceIdr}), 0)::int`,
+        })
+        .from(orders)
+        .innerJoin(orderItems, eq(orderItems.orderId, orders.id))
+        .where(
+          and(
+            eq(orders.creatorId, creatorId),
+            eq(orders.status, "paid"),
+            gte(orders.createdAt, since),
+            isNotNull(orderItems.productId),
+          ),
+        )
+        .groupBy(orderItems.productId);
     },
 
     async recordWebhookEvent(args) {
@@ -263,6 +307,8 @@ export interface OrderService {
   paidTotalsSince(creatorId: string, since: Date): Promise<{ count: number; revenueIdr: number }>;
   // The same totals split by UTC calendar day, for the analytics trend chart.
   paidRevenueByDay(creatorId: string, since: Date): Promise<DailyRevenue[]>;
+  // Paid orders and revenue per product, for the analytics conversion breakdown.
+  paidRevenueByProduct(creatorId: string, since: Date): Promise<ProductRevenue[]>;
   listEntitlementsByEmail(email: string): Promise<ProductEntitlement[]>;
   // Verifies and applies a provider webhook. The provider is trusted to have
   // validated its own signature; everything else (amount, currency, order state)
@@ -271,6 +317,27 @@ export interface OrderService {
 }
 
 export function createOrderService(repository: OrderRepository, deps: OrderDeps, provider: PaymentProvider): OrderService {
+  // Notification is best-effort: an email that cannot be sent must never turn a
+  // settled payment into a failure, so the error is swallowed here and recorded
+  // on the outbox row by the implementation.
+  async function announcePaid(order: Order): Promise<void> {
+    if (!deps.onOrderPaid) return;
+    try {
+      const items = await repository.listItems(order.id);
+      await deps.onOrderPaid({
+        creatorId: order.creatorId,
+        orderReference: order.reference,
+        buyerName: order.buyerName,
+        buyerEmail: order.buyerEmail,
+        totalIdr: order.totalIdr,
+        currency: order.currency,
+        items: items.map((item) => item.title),
+      });
+    } catch (error) {
+      console.error("[orders] paid-order notification failed", error);
+    }
+  }
+
   return {
     async checkout(input) {
       const parsed = createOrderSchema.safeParse({
@@ -311,7 +378,9 @@ export function createOrderService(repository: OrderRepository, deps: OrderDeps,
           toStatus: "paid",
           paidAt: new Date(),
         });
-        return ok({ order: paid ?? order, redirectUrl: null });
+        const settled = paid ?? order;
+        await announcePaid(settled);
+        return ok({ order: settled, redirectUrl: null });
       }
 
       try {
@@ -360,6 +429,10 @@ export function createOrderService(repository: OrderRepository, deps: OrderDeps,
 
     paidRevenueByDay(creatorId, since) {
       return repository.paidRevenueByDay(creatorId, since);
+    },
+
+    paidRevenueByProduct(creatorId, since) {
+      return repository.paidRevenueByProduct(creatorId, since);
     },
 
     async handleWebhook(payload) {
@@ -416,6 +489,10 @@ export function createOrderService(repository: OrderRepository, deps: OrderDeps,
       });
       // A concurrent webhook applied the same change first; treat as duplicate.
       if (!updated) return ok({ outcome: "duplicate" });
+
+      // Only after the order is durably paid, and only for a transition into
+      // `paid`, so a failed or refunded order never triggers a receipt.
+      if (next === "paid") await announcePaid(updated);
 
       return ok({ outcome: "processed", order: updated });
     },

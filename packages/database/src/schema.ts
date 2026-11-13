@@ -276,3 +276,27 @@ export const productViewEvents = pgTable("product_view_events", {
   index("product_view_events_creator_created_idx").on(table.creatorId, table.createdAt),
   index("product_view_events_product_idx").on(table.productId),
 ]);
+
+// Outbound email, written to the database before it is sent. Keeping the message
+// as a row rather than firing it inline means a provider outage cannot lose a
+// receipt, and the unique `dedupe_key` is what stops a replayed webhook from
+// mailing the same person twice. `status` and `attempts` record what happened.
+export const notificationOutbox = pgTable("notification_outbox", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 40 }).notNull(),
+  // Caller-chosen idempotency key (for example `sale:<order reference>`). Unique
+  // across the table so the second enqueue of the same message is a no-op.
+  dedupeKey: varchar("dedupe_key", { length: 160 }).notNull(),
+  recipientEmail: varchar("recipient_email", { length: 254 }).notNull(),
+  recipientName: varchar("recipient_name", { length: 120 }),
+  status: varchar("status", { length: 16 }).notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: varchar("last_error", { length: 300 }),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  ...timestamps(),
+}, (table) => [
+  uniqueIndex("notification_outbox_dedupe_uq").on(table.dedupeKey),
+  index("notification_outbox_creator_created_idx").on(table.creatorId, table.createdAt),
+  index("notification_outbox_status_idx").on(table.status),
+]);

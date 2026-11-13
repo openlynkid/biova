@@ -25,14 +25,17 @@ shape day-to-day decisions:
   (auth foundation, database schema). Phase 2 complete: creator, page and links
   domains, the public page route and the creator dashboard are implemented.
   Phase 3 complete: products, checkout, Midtrans, asset storage and delivery are
-  implemented. Phase 4 in progress: page analytics (events, summary, daily
-  timeseries, dashboard panel with a 7d/30d/90d range control) and public-page
-  SEO (canonical/OG metadata, JSON-LD structured data, sitemap.xml, robots.txt)
-  are implemented; more growth features are next.
+  implemented. Phase 4 complete: page analytics (events, summary, daily
+  timeseries, revenue and conversion breakdown, dashboard traffic and revenue
+  panels with a 7d/30d/90d range control), public-page SEO (canonical/OG
+  metadata, JSON-LD structured data, sitemap.xml, robots.txt), paid-order
+  notifications (buyer receipt and creator sale alert through a deduped outbox)
+  and conversion improvements (per-product conversion, an explicit buy action on
+  the product card) are implemented.
 - Domain boundaries to build next: growth and media. Each domain owns its tables,
   repositories and service APIs, and exposes a public interface (ADR-0002,
-  ADR-0004). Creator, page, links, products, orders, payments, delivery and
-  analytics are done.
+  ADR-0004). Creator, page, links, products, orders, payments, delivery,
+  analytics and notifications are done.
 - Payments use Midtrans. Payment status may only change from a verified server
   webhook, and webhooks must be idempotent.
 - Paid files must never be reachable by public URL or by client-asserted
@@ -66,6 +69,7 @@ Map before adding tables so the same concept is not created twice:
 | payment_webhook_event | `payment_webhook_events` |
 | product_entitlement | `product_entitlements` |
 | product_asset | `product_assets` |
+| (notifications, outbox pattern) | `notification_outbox` |
 | creator_profile, page_theme, link_click_event, page_view_event | not built yet |
 
 Note that `creators.bio` already covers part of `creator_profile`, and `pages.theme`
@@ -172,7 +176,21 @@ a build step that requires `DATABASE_URL`.
   (`seriesWindow` in `@biova/shared`: the last N UTC calendar days ending today),
   so the daily buckets always sum to the summary totals. Days are bucketed in SQL
   (`to_char(created_at at time zone 'UTC', ...)`) and gaps are filled by the pure
-  `buildDailySeries`.
+  `buildDailySeries`. `summary` also reports revenue by product
+  (`paidRevenueByProduct`, injected from orders) plus `averageOrderValueIdr` and
+  `conversionRate` (orders over product views), each product carrying its own
+  conversion; the per-product revenue and the totals come from one read in one
+  window, so they cannot disagree.
+- `packages/notifications`: paid-order notifications. Owns `notification_outbox`
+  (one row per message, `dedupe_key` unique, so a replayed webhook sends nothing).
+  `order_paid` (buyer receipt) and `sale` (creator alert) templates live in
+  `templates.ts`; every interpolated value is escaped, and each message carries a
+  plain-text fallback. `NotificationProvider` is a transport port; the default
+  records messages in memory (no email driver is wired yet). The orders domain
+  calls it through an injected `onOrderPaid` hook after the order is durably
+  `paid`, and the service swallows provider failures, so mail can never fail a
+  settled payment. Reaches the creator contact through an injected function, so
+  it imports neither the creator nor the orders domain.
 - `packages/payments`: `PaymentProvider` abstraction with a Midtrans adapter
   (sha512 signature verification) and a fake provider for tests and local
   development. `core` picks the provider from the environment.
@@ -286,6 +304,10 @@ a build step that requires `DATABASE_URL`.
   drift and concurrent webhooks cannot both win.
 - The order reference is the buyer's bearer token for `/order/:reference`; it is
   random and not derivable from the creator or product slug.
+- Notifications are best-effort and must stay that way: `onOrderPaid` is called
+  only after the order is durably `paid`, the orders service swallows its errors,
+  and the notification service records a provider failure on the outbox row
+  instead of throwing. Never make a settled payment depend on a send.
 - Local development and tests use the fake provider unless `MIDTRANS_SERVER_KEY`
   is set. The fake provider still requires `PAYMENT_FAKE_SECRET`.
 

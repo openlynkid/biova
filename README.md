@@ -154,7 +154,8 @@ carries an amount. Paid products redirect to the gateway's hosted page; free
 products are fulfilled immediately. `/order/:reference` shows the buyer the
 order status and their items; the random reference is the bearer credential.
 
-The creator sees orders and revenue in the dashboard (`ORDERS` panel).
+The creator sees orders and revenue in the dashboard (`REVENUE` panel), with
+average order value, conversion and a per-product breakdown.
 
 Payments use Midtrans. Set `MIDTRANS_SERVER_KEY` to enable it; without it, a fake
 provider is used for local development and tests (it still requires
@@ -162,6 +163,25 @@ provider is used for local development and tests (it still requires
 `POST /v1/webhooks/:provider`; the signature is verified before anything is
 recorded, and the amount is checked against the stored order. See
 `docs/adr/0008-checkout-and-payments.md`.
+
+## Notifications
+
+When an order becomes paid the buyer gets a receipt and the creator gets a sale
+alert. The orders domain calls an injected `onOrderPaid` hook only after the
+order is durably `paid`, and the notification service catches every provider
+failure, so a mail outage can never fail a settled payment.
+
+Messages go through `notification_outbox` (one row per message, `dedupe_key`
+unique). A replayed webhook finds the row already present and sends nothing, so
+a buyer is mailed exactly once per order — the same idempotency gate the webhook
+event table uses. Each row records its `status`, an `attempts` count and the last
+error.
+
+Templates are code in `@biova/notifications` (`order_paid`, `sale`); every
+interpolated value is escaped, because a buyer name or product title must not
+become markup in a mail client. Transport is a port: no email driver is wired
+yet, so the default records messages in memory instead of sending them. See
+`docs/adr/0013-notifications-and-revenue.md`.
 
 ## Digital delivery
 
@@ -205,8 +225,18 @@ buckets always add up to the summary totals. A day with no events is a real zero
 not a missing bucket. The dashboard's range control re-reads both together.
 
 Every number is derived from the raw event rows at read time; nothing is a stored
-counter, so a summary always agrees with the rows it comes from. See
-`docs/adr/0010-page-analytics.md` and `docs/adr/0012-analytics-breakdown.md`.
+counter, so a summary always agrees with the rows it comes from.
+
+The summary also breaks revenue down by product (`paidRevenueByProduct` in the
+orders domain, read through an injected function) and derives two conversion
+numbers: `averageOrderValueIdr` (revenue over orders) and `conversionRate`
+(orders over product views), plus a per-product `conversionRate`. The per-product
+revenue and the totals come from one read in one window, so they cannot disagree.
+A product with no activity is reported at zero rather than omitted. The dashboard
+shows these in the `REVENUE` panel, and the public product card carries an
+explicit `Buy now` affordance. See `docs/adr/0010-page-analytics.md`,
+`docs/adr/0012-analytics-breakdown.md` and
+`docs/adr/0013-notifications-and-revenue.md`.
 
 ## Plugin model
 

@@ -2,8 +2,10 @@ import { and, count, countDistinct, eq, gte, sql, type AnyColumn } from "drizzle
 import { linkClickEvents, pageViewEvents, productViewEvents } from "@biova/database/schema";
 import type { Database } from "@biova/database/types";
 import {
+  averageOrderValue,
   buildDailySeries,
   clickThroughRate,
+  conversionRate,
   seriesWindow,
   trackEventSchema,
   type AnalyticsRange,
@@ -11,6 +13,7 @@ import {
   type AnalyticsTimeseries,
   type DailyCount,
   type DailyRevenue,
+  type ProductRevenue,
   type Result,
   ok,
   fail,
@@ -140,6 +143,7 @@ export interface AnalyticsDeps {
   listProducts(creatorId: string): Promise<{ id: string; title: string }[]>;
   paidOrders(creatorId: string, since: Date): Promise<{ count: number; revenueIdr: number }>;
   paidRevenueByDay(creatorId: string, since: Date): Promise<DailyRevenue[]>;
+  paidRevenueByProduct(creatorId: string, since: Date): Promise<ProductRevenue[]>;
 }
 
 export interface AnalyticsService {
@@ -210,7 +214,7 @@ export function createAnalyticsService(
 
     async summary(creatorId, range) {
       const { since: from } = windowFor(range);
-      const [pageViews, uniqueVisitors, linkClicks, productViews, clicksByLink, viewsByProduct, orders, links, products] =
+      const [pageViews, uniqueVisitors, linkClicks, productViews, clicksByLink, viewsByProduct, orders, revenueByProduct, links, products] =
         await Promise.all([
           repository.countPageViews(creatorId, from),
           repository.countUniqueVisitors(creatorId, from),
@@ -219,12 +223,14 @@ export function createAnalyticsService(
           repository.linkClicksByLink(creatorId, from),
           repository.productViewsByProduct(creatorId, from),
           deps.paidOrders(creatorId, from),
+          deps.paidRevenueByProduct(creatorId, from),
           deps.listLinks(creatorId),
           deps.listProducts(creatorId),
         ]);
 
       const clicks = new Map(clicksByLink.map((row) => [row.linkId, row.clicks]));
       const views = new Map(viewsByProduct.map((row) => [row.productId, row.views]));
+      const sales = new Map(revenueByProduct.map((row) => [row.productId, row]));
 
       return {
         range,
@@ -235,8 +241,21 @@ export function createAnalyticsService(
         productViews,
         orders: orders.count,
         revenueIdr: orders.revenueIdr,
+        averageOrderValueIdr: averageOrderValue(orders.revenueIdr, orders.count),
+        conversionRate: conversionRate(orders.count, productViews),
         links: links.map((link) => ({ linkId: link.id, title: link.title, clicks: clicks.get(link.id) ?? 0 })),
-        products: products.map((product) => ({ productId: product.id, title: product.title, views: views.get(product.id) ?? 0 })),
+        products: products.map((product) => {
+          const sold = sales.get(product.id);
+          const productViewCount = views.get(product.id) ?? 0;
+          return {
+            productId: product.id,
+            title: product.title,
+            views: productViewCount,
+            orders: sold?.count ?? 0,
+            revenueIdr: sold?.revenueIdr ?? 0,
+            conversionRate: conversionRate(sold?.count ?? 0, productViewCount),
+          };
+        }),
       };
     },
 

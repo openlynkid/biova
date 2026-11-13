@@ -189,10 +189,10 @@ function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeo
 
       <ProfileForm creator={creator} onSave={(payload) => run(async () => updateProfile({ data: payload }))} />
       <AnalyticsPanel analytics={detail.summary} days={detail.days} range={range} onRangeChange={selectRange} />
+      <RevenuePanel analytics={detail.summary} days={detail.days} orders={orders} range={range} />
       <PageForm page={page} onSave={(payload) => run(async () => updatePage({ data: payload }))} />
       <LinksEditor links={links} onError={setError} />
       <ProductsEditor products={products} onError={setError} />
-      <OrdersPanel orders={orders} />
     </Shell>
   );
 }
@@ -380,16 +380,84 @@ function ProductsEditor({ products, onError }: { products: ProductRow[]; onError
 
 type OrderRow = { reference: string; status: string; totalIdr: number; buyerName: string; buyerEmail: string; createdAt: string; items: { title: string; unitPriceIdr: number }[] };
 
-function OrdersPanel({ orders }: { orders: OrderRow[] }) {
-  const paid = orders.filter((order) => order.status === "paid");
-  const revenue = paid.reduce((sum, order) => sum + order.totalIdr, 0);
+// The money view: what the window earned, what an order is worth on average, how
+// many product views turned into an order, the daily revenue trend, and which
+// products actually sell. The totals come from the same analytics summary as the
+// traffic panel, so the two never disagree, and the per-product rows come from
+// the orders breakdown rather than being recomputed here.
+function RevenuePanel({
+  analytics,
+  days,
+  orders,
+  range,
+}: {
+  analytics: AnalyticsRow;
+  days: AnalyticsDay[];
+  orders: OrderRow[];
+  range: AnalyticsRange;
+}) {
+  const rangeLabel = RANGE_LABELS[range] ?? range;
+  const selling = [...analytics.products].filter((product) => product.orders > 0).sort((a, b) => b.revenueIdr - a.revenueIdr);
+  // Only days with revenue, so an empty window does not render a flat chart.
+  const peakRevenue = Math.max(1, ...days.map((day) => day.revenueIdr));
+  const hasRevenue = days.some((day) => day.revenueIdr > 0);
+
   return (
     <section className="panel">
-      <div className="eyebrow">ORDERS ({orders.length})</div>
-      <div className="stat-row">
-        <div className="stat"><span className="stat-label">PAID</span><strong>{paid.length}</strong></div>
-        <div className="stat"><span className="stat-label">REVENUE</span><strong>{formatPriceIdr(revenue)}</strong></div>
+      <div className="section-heading">
+        <div className="eyebrow">REVENUE ({rangeLabel.toUpperCase()})</div>
+        <span className="count">{orders.length} ORDER{orders.length === 1 ? "" : "S"}</span>
       </div>
+
+      <div className="stat-row">
+        <div className="stat"><span className="stat-label">REVENUE</span><strong>{formatPriceIdr(analytics.revenueIdr)}</strong></div>
+        <div className="stat"><span className="stat-label">PAID ORDERS</span><strong>{analytics.orders}</strong></div>
+        <div className="stat"><span className="stat-label">AVG ORDER</span><strong>{formatPriceIdr(analytics.averageOrderValueIdr)}</strong></div>
+        <div className="stat"><span className="stat-label">CONVERSION</span><strong>{analytics.conversionRate}%</strong></div>
+      </div>
+
+      {hasRevenue ? (
+        <>
+          <div className="trend-legend">
+            <span><i style={{ background: "#5fd3a6" }} />Revenue per day</span>
+          </div>
+          <div className="trend" role="img" aria-label={`Daily revenue over the last ${rangeLabel}`}>
+            {days.map((day) => (
+              <div
+                className="trend-col"
+                key={day.date}
+                title={`${shortDay(day.date)} · ${formatPriceIdr(day.revenueIdr)} · ${day.orders} orders`}
+              >
+                <span className="trend-bar revenue" style={{ height: `${(day.revenueIdr / peakRevenue) * 100}%` }} />
+              </div>
+            ))}
+          </div>
+          <div className="trend-axis">
+            <span>{shortDay(days[0].date)}</span>
+            <span>{shortDay(days[days.length - 1].date)}</span>
+          </div>
+        </>
+      ) : null}
+
+      {selling.length > 0 ? (
+        <>
+          <div className="section-heading"><div className="eyebrow">REVENUE BY PRODUCT</div><span className="count">{selling.length} ITEM</span></div>
+          <ul className="rows">
+            {selling.map((product) => (
+              <li className="row" key={product.productId}>
+                <span className="row-icon">₨</span>
+                <div className="row-body">
+                  <strong>{product.title}</strong>
+                  <small>{product.orders} sold · {product.views} views · {product.conversionRate}% convert</small>
+                </div>
+                <span className="product-price">{formatPriceIdr(product.revenueIdr)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      <div className="section-heading"><div className="eyebrow">ORDERS ({orders.length})</div></div>
       <ul className="rows">
         {orders.map((order) => (
           <li className={order.status === "paid" ? "row" : "row disabled"} key={order.reference}>
@@ -416,8 +484,10 @@ type AnalyticsRow = {
   productViews: number;
   orders: number;
   revenueIdr: number;
+  averageOrderValueIdr: number;
+  conversionRate: number;
   links: { linkId: string; title: string; clicks: number }[];
-  products: { productId: string; title: string; views: number }[];
+  products: { productId: string; title: string; views: number; orders: number; revenueIdr: number; conversionRate: number }[];
 };
 
 type AnalyticsDay = {
@@ -484,8 +554,6 @@ function AnalyticsPanel({
         <div className="stat"><span className="stat-label">LINK CLICKS</span><strong>{analytics.linkClicks}</strong></div>
         <div className="stat"><span className="stat-label">CTR</span><strong>{analytics.clickThroughRate}%</strong></div>
         <div className="stat"><span className="stat-label">PRODUCT VIEWS</span><strong>{analytics.productViews}</strong></div>
-        <div className="stat"><span className="stat-label">ORDERS</span><strong>{analytics.orders}</strong></div>
-        <div className="stat"><span className="stat-label">REVENUE</span><strong>{formatPriceIdr(analytics.revenueIdr)}</strong></div>
       </div>
 
       {days.length > 0 ? (
@@ -535,7 +603,10 @@ function AnalyticsPanel({
             {topProducts.map((product) => (
               <li className="row" key={product.productId}>
                 <span className="row-icon">◍</span>
-                <div className="row-body"><strong>{product.title}</strong></div>
+                <div className="row-body">
+                  <strong>{product.title}</strong>
+                  <small>{product.views} views · {product.orders} sold · {product.conversionRate}% convert</small>
+                </div>
                 <span className="product-price">{product.views}</span>
               </li>
             ))}

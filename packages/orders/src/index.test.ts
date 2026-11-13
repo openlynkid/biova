@@ -291,4 +291,97 @@ describe("order service", () => {
     if (!other.ok) throw new Error("setup failed");
     expect(await service.paidRevenueByDay(other.value.id, since)).toEqual([]);
   });
+
+  test("paid revenue is grouped by product and scoped to the creator", async () => {
+    const paid = await service.checkout({
+      creatorSlug: "seller",
+      productSlug: "ebook",
+      buyerName: "PerProduct",
+      buyerEmail: "per-product@example.com",
+    });
+    if (!paid.ok) throw new Error("setup failed");
+    await service.handleWebhook(
+      notification({ order_id: paid.value.order.reference, transaction_id: "tx-per-product" }),
+    );
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const byProduct = await service.paidRevenueByProduct(creatorId, since);
+    const ebook = byProduct.find((row) => row.productId === productId);
+    expect(ebook?.count).toBeGreaterThanOrEqual(1);
+    expect(ebook?.revenueIdr).toBeGreaterThanOrEqual(75_000);
+
+    const otherUser = await createTestUser(context.db);
+    const creators = createCreatorService(createCreatorRepository(context.db));
+    const other = await creators.getOrCreate({ userId: otherUser.id, slug: "product-other", displayName: "Other" });
+    if (!other.ok) throw new Error("setup failed");
+    expect(await service.paidRevenueByProduct(other.value.id, since)).toEqual([]);
+  });
+
+  test("notifies once when an order becomes paid, and not for a failed payment", async () => {
+    const paidCalls: { orderReference: string; items: string[] }[] = [];
+    const notifying = createOrderService(
+      createOrderRepository(context.db),
+      {
+        findSellableProduct,
+        async onOrderPaid(input) {
+          paidCalls.push({ orderReference: input.orderReference, items: input.items });
+        },
+      },
+      createFakeProvider({ secret: SECRET }),
+    );
+
+    const checkout = await notifying.checkout({
+      creatorSlug: "seller",
+      productSlug: "ebook",
+      buyerName: "Notified",
+      buyerEmail: "notified@example.com",
+    });
+    if (!checkout.ok) throw new Error("setup failed");
+    const reference = checkout.value.order.reference;
+
+    const settled = await notifying.handleWebhook(notification({ order_id: reference, transaction_id: "tx-notify" }));
+    expect(settled.ok && settled.value.outcome).toBe("processed");
+    expect(paidCalls).toEqual([{ orderReference: reference, items: ["E-book"] }]);
+
+    // The replay is a duplicate, so the buyer is not notified a second time.
+    await notifying.handleWebhook(notification({ order_id: reference, transaction_id: "tx-notify" }));
+    expect(paidCalls).toHaveLength(1);
+
+    const denied = await notifying.checkout({
+      creatorSlug: "seller",
+      productSlug: "ebook",
+      buyerName: "Denied",
+      buyerEmail: "denied-notify@example.com",
+    });
+    if (!denied.ok) throw new Error("setup failed");
+    await notifying.handleWebhook(
+      notification({ order_id: denied.value.order.reference, transaction_status: "deny", transaction_id: "tx-deny-notify" }),
+    );
+    expect(paidCalls).toHaveLength(1);
+  });
+
+  test("a notification failure never fails the settled payment", async () => {
+    const brittle = createOrderService(
+      createOrderRepository(context.db),
+      {
+        findSellableProduct,
+        async onOrderPaid() {
+          throw new Error("email provider down");
+        },
+      },
+      createFakeProvider({ secret: SECRET }),
+    );
+
+    const checkout = await brittle.checkout({
+      creatorSlug: "seller",
+      productSlug: "ebook",
+      buyerName: "Resilient",
+      buyerEmail: "resilient@example.com",
+    });
+    if (!checkout.ok) throw new Error("setup failed");
+    const result = await brittle.handleWebhook(
+      notification({ order_id: checkout.value.order.reference, transaction_id: "tx-resilient" }),
+    );
+    expect(result.ok && result.value.order?.status).toBe("paid");
+  });
 });

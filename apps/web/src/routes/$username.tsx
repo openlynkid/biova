@@ -118,7 +118,10 @@ function PublicPage() {
                 <strong>{product.title}</strong>
                 {product.description ? <small>{product.description}</small> : null}
               </div>
-              <span className="product-price">{formatPriceIdr(product.priceIdr)}</span>
+              <span className="product-cta">
+                <span className="product-price">{formatPriceIdr(product.priceIdr)}</span>
+                <span className="product-buy">Buy now</span>
+              </span>
             </Link>
           ))}
         </section>

@@ -48,10 +48,19 @@ export interface AnalyticsLinkBreakdown {
   clicks: number;
 }
 
+// One product's share of the window: how often its card was viewed, how many
+// paid orders it brought in, and the money those orders were worth. The
+// conversion rate ties views to orders so the creator can see which product
+// earns its traffic.
 export interface AnalyticsProductBreakdown {
   productId: string;
   title: string;
   views: number;
+  orders: number;
+  revenueIdr: number;
+  // Orders per view, as a percentage rounded to one decimal. Zero when there
+  // are no views.
+  conversionRate: number;
 }
 
 export interface AnalyticsSummary {
@@ -65,6 +74,11 @@ export interface AnalyticsSummary {
   productViews: number;
   orders: number;
   revenueIdr: number;
+  // Revenue per paid order, in whole rupiah. Zero when there are no paid orders.
+  averageOrderValueIdr: number;
+  // Product views that became a paid order, as a percentage rounded to one
+  // decimal. The page-level funnel: views, then orders.
+  conversionRate: number;
   links: AnalyticsLinkBreakdown[];
   products: AnalyticsProductBreakdown[];
 }
@@ -74,6 +88,21 @@ export interface AnalyticsSummary {
 export function clickThroughRate(linkClicks: number, pageViews: number): number {
   if (pageViews <= 0) return 0;
   return Math.round((linkClicks / pageViews) * 1000) / 10;
+}
+
+// A ratio of two counts as a percentage, rounded to one decimal. Shared by the
+// page-level funnel and the per-product conversion so both round the same way
+// and both answer zero rather than dividing by zero.
+export function conversionRate(conversions: number, opportunities: number): number {
+  if (opportunities <= 0) return 0;
+  return Math.round((conversions / opportunities) * 1000) / 10;
+}
+
+// Revenue per order in whole rupiah. Rupiah has no minor unit, so the mean is
+// rounded to the nearest rupiah rather than kept as a fraction.
+export function averageOrderValue(revenueIdr: number, orders: number): number {
+  if (orders <= 0) return 0;
+  return Math.round(revenueIdr / orders);
 }
 
 // A daily bucket. The date is a UTC calendar day (YYYY-MM-DD); events are
@@ -102,6 +131,15 @@ export interface DailyCount {
 
 export interface DailyRevenue {
   date: string;
+  count: number;
+  revenueIdr: number;
+}
+
+// Paid orders and revenue for one product over the window, for the per-product
+// conversion breakdown. Products with no sales are absent, so the reader fills
+// them in as zero.
+export interface ProductRevenue {
+  productId: string;
   count: number;
   revenueIdr: number;
 }

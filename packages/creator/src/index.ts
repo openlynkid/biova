@@ -1,9 +1,19 @@
 import { and, eq, ne } from "drizzle-orm";
-import { creators } from "@biova/database/schema";
+import { creators, user } from "@biova/database/schema";
 import type { Database } from "@biova/database/types";
 import { createCreatorSchema, updateCreatorProfileSchema, type Result, ok, fail } from "@biova/shared";
 
 export type Creator = typeof creators.$inferSelect;
+
+// A creator plus the email of the auth user behind them. The email lives on the
+// auth user, not the creator, so this is a join; it is only needed where the
+// platform has to contact the creator (a sale alert).
+export interface CreatorContact {
+  id: string;
+  slug: string;
+  displayName: string;
+  email: string;
+}
 
 export type CreatorError =
   | "slug_taken"
@@ -28,6 +38,9 @@ export interface CreatorRepository {
   findByUserId(userId: string): Promise<Creator | undefined>;
   findBySlug(slug: string): Promise<Creator | undefined>;
   findById(id: string): Promise<Creator | undefined>;
+  // Joins the auth user so a caller can reach the creator's email. Returns
+  // undefined when the creator does not exist.
+  findContactById(id: string): Promise<CreatorContact | undefined>;
   create(args: CreateCreatorArgs): Promise<Creator>;
   updateProfile(args: UpdateCreatorProfileArgs): Promise<Creator | undefined>;
   isSlugAvailable(slug: string, exceptCreatorId?: string): Promise<boolean>;
@@ -45,6 +58,20 @@ export function createCreatorRepository(db: Database): CreatorRepository {
     },
     async findById(id) {
       const [row] = await db.select().from(creators).where(eq(creators.id, id)).limit(1);
+      return row;
+    },
+    async findContactById(id) {
+      const [row] = await db
+        .select({
+          id: creators.id,
+          slug: creators.slug,
+          displayName: creators.displayName,
+          email: user.email,
+        })
+        .from(creators)
+        .innerJoin(user, eq(user.id, creators.userId))
+        .where(eq(creators.id, id))
+        .limit(1);
       return row;
     },
     async create(args) {
@@ -82,6 +109,8 @@ export interface CreatorService {
   getOrCreate(args: CreateCreatorArgs): Promise<Result<Creator, CreatorError>>;
   getByUserId(userId: string): Promise<Creator | undefined>;
   getBySlug(slug: string): Promise<Creator | undefined>;
+  // The creator plus their contact email, used by the notifications domain.
+  getContactById(creatorId: string): Promise<CreatorContact | undefined>;
   updateProfile(args: UpdateCreatorProfileArgs): Promise<Result<Creator, CreatorError>>;
 }
 
@@ -111,6 +140,10 @@ export function createCreatorService(repository: CreatorRepository): CreatorServ
 
     getBySlug(slug) {
       return repository.findBySlug(slug);
+    },
+
+    getContactById(creatorId) {
+      return repository.findContactById(creatorId);
     },
 
     async updateProfile(args) {

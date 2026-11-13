@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServices } from "@biova/core";
 import { createFakeProvider } from "@biova/payments";
+import { createRecordingProvider } from "@biova/notifications";
 import { createTestDatabase, createTestUser, type TestDatabase } from "@biova/database/testing";
 import { createApp } from "./app";
 
@@ -9,6 +10,9 @@ const WEBHOOK_SECRET = "test-webhook-secret";
 
 let context: TestDatabase;
 let app: ReturnType<typeof createApp>;
+// Records the buyer receipt and creator sale alert a paid order triggers, so a
+// test can assert the notification actually left the order flow.
+let notifications: ReturnType<typeof createRecordingProvider>;
 
 // Two users so the tests can prove one creator cannot touch another's data.
 let aliceId: string;
@@ -16,7 +20,12 @@ let bobId: string;
 
 beforeAll(async () => {
   context = await createTestDatabase();
-  const services = createServices(context.db, { paymentProvider: createFakeProvider({ secret: WEBHOOK_SECRET }) });
+  notifications = createRecordingProvider();
+  const services = createServices(context.db, {
+    paymentProvider: createFakeProvider({ secret: WEBHOOK_SECRET }),
+    notificationProvider: notifications,
+    siteUrl: "https://biova.test",
+  });
 
   aliceId = (await createTestUser(context.db)).id;
   bobId = (await createTestUser(context.db)).id;
@@ -259,9 +268,18 @@ describe("biova api", () => {
     expect(paid.status).toBe(200);
     expect(await paid.json()).toEqual({ outcome: "processed" });
 
+    // The settled payment notifies the buyer (a receipt) and the creator (a sale
+    // alert), and the receipt links back to the order on the configured origin.
+    const recipients = notifications.messages.map((message) => message.to);
+    expect(recipients).toContain("buyer@example.com");
+    expect(notifications.messages.some((message) => message.subject.includes("sale"))).toBe(true);
+    const receipt = notifications.messages.find((message) => message.to === "buyer@example.com");
+    expect(receipt?.html).toContain(`https://biova.test/order/${order.reference}`);
+
     // A replay is acknowledged but does nothing.
     const replay = await request("/v1/webhooks/fake", { method: "POST", body: JSON.stringify(notification) });
     expect(await replay.json()).toEqual({ outcome: "duplicate" });
+    expect(notifications.messages.filter((message) => message.to === "buyer@example.com")).toHaveLength(1);
 
     const confirmed = await request(`/v1/orders/${order.reference}`);
     expect(((await confirmed.json()) as { order: { status: string } }).order.status).toBe("paid");
@@ -345,10 +363,29 @@ describe("biova api", () => {
     });
     expect(click.status).toBe(202);
 
+    // A product view gives the revenue breakdown a denominator to convert against.
+    const productId = ((await (await request("/v1/products", {}, aliceId)).json()) as { products: { id: string }[] }).products[0].id;
+    const productView = await request("/v1/public/alice/events", {
+      method: "POST",
+      body: JSON.stringify({ type: "product_view", visitorId: "visitor-abc123", productId }),
+    });
+    expect(productView.status).toBe(202);
+
     const summary = await request("/v1/analytics/summary?range=30d", {}, aliceId);
     expect(summary.status).toBe(200);
     const { summary: metrics } = (await summary.json()) as {
-      summary: { pageViews: number; uniqueVisitors: number; linkClicks: number; clickThroughRate: number; revenueIdr: number; orders: number };
+      summary: {
+        pageViews: number;
+        uniqueVisitors: number;
+        linkClicks: number;
+        clickThroughRate: number;
+        productViews: number;
+        revenueIdr: number;
+        orders: number;
+        averageOrderValueIdr: number;
+        conversionRate: number;
+        products: { productId: string; title: string; views: number; orders: number; revenueIdr: number; conversionRate: number }[];
+      };
     };
     expect(metrics.pageViews).toBe(1);
     expect(metrics.uniqueVisitors).toBe(1);
@@ -357,6 +394,24 @@ describe("biova api", () => {
     // The paid order from the earlier checkout test shows up in the range.
     expect(metrics.orders).toBe(1);
     expect(metrics.revenueIdr).toBe(49_000);
+    expect(metrics.averageOrderValueIdr).toBe(49_000);
+    // One product view and one order is a 100% product-view conversion.
+    expect(metrics.productViews).toBe(1);
+    expect(metrics.conversionRate).toBe(100);
+    expect(metrics.products.find((row) => row.productId === productId)).toEqual({
+      productId,
+      title: "E-book",
+      views: 1,
+      orders: 1,
+      revenueIdr: 49_000,
+      conversionRate: 100,
+    });
+    // A product with no activity is still listed, at zero, so the breakdown is
+    // never silently missing a product.
+    const all = ((await (await request("/v1/products", {}, aliceId)).json()) as { products: { id: string }[] }).products;
+    expect(metrics.products.map((row) => row.productId).sort()).toEqual(all.map((row) => row.id).sort());
+    const idle = metrics.products.find((row) => row.productId !== productId);
+    expect(idle).toMatchObject({ views: 0, orders: 0, revenueIdr: 0, conversionRate: 0 });
   });
 
   test("analytics ingest rejects unknown creators, foreign links and bad input", async () => {
