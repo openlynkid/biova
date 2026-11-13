@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createTestDatabase, createTestUser, type TestDatabase } from "@biova/database/testing";
-import { createServices, getPublicPage, type BiovaServices } from "./index";
+import { createServices, getPublicPage, listPublishedPages, type BiovaServices } from "./index";
 
 let context: TestDatabase;
 let services: BiovaServices;
@@ -57,5 +57,15 @@ describe("public page read model", () => {
     expect(page?.products).toEqual([
       { id: live.value.id, slug: "core-live", title: "Live", description: null, priceIdr: 25_000 },
     ]);
+  });
+});
+
+describe("sitemap read model", () => {
+  test("lists the published page and drops it once unpublished", async () => {
+    expect((await listPublishedPages(services)).map((page) => page.slug)).toEqual(["coreuser"]);
+
+    await services.pages.setStatus(creatorId, "draft");
+    expect(await listPublishedPages(services)).toEqual([]);
+    await services.pages.setStatus(creatorId, "published");
   });
 });

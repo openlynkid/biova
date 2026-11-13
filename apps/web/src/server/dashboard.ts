@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
-import { createServices, type BiovaServices } from "@biova/core";
+import { getServices } from "./services";
 import {
   createLinkSchema,
   createProductSchema,
@@ -23,13 +23,6 @@ import {
   type AssetView,
   type PageTheme,
 } from "@biova/shared";
-
-// Loaded lazily so the browser bundle never pulls in the database driver.
-let servicesPromise: Promise<BiovaServices> | undefined;
-function getServices(): Promise<BiovaServices> {
-  servicesPromise ??= import("@biova/database").then(({ db }) => createServices(db));
-  return servicesPromise;
-}
 
 // Resolve the signed-in user from the incoming request cookies. Runs on the
 // server only; `getRequestHeaders` is a no-op in the browser bundle.

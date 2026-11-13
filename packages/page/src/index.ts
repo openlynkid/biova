@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { creators, pages } from "@biova/database/schema";
 import type { Database } from "@biova/database/types";
 import { canTransitionPage, pageStatusSchema, updatePageSchema, type PageStatus, type Result, ok, fail } from "@biova/shared";
@@ -28,9 +28,17 @@ export interface UpdatePageArgs {
 export interface PageRepository {
   findByCreatorId(creatorId: string): Promise<Page | undefined>;
   findPublishedBySlug(slug: string): Promise<Page | undefined>;
+  listPublishedWithCreator(): Promise<PublishedPageEntry[]>;
   create(args: CreatePageArgs): Promise<Page>;
   update(args: UpdatePageArgs): Promise<Page | undefined>;
   setStatus(creatorId: string, status: PageStatus): Promise<Page | undefined>;
+}
+
+// One row per published page, joined with its creator slug. Used to build the
+// sitemap, so it carries only what a sitemap needs.
+export interface PublishedPageEntry {
+  slug: string;
+  lastModified: Date;
 }
 
 export function createPageRepository(db: Database): PageRepository {
@@ -47,6 +55,15 @@ export function createPageRepository(db: Database): PageRepository {
         .where(and(eq(creators.slug, slug), eq(pages.status, "published")))
         .limit(1);
       return row?.page;
+    },
+    async listPublishedWithCreator() {
+      const rows = await db
+        .select({ slug: creators.slug, updatedAt: pages.updatedAt })
+        .from(pages)
+        .innerJoin(creators, eq(pages.creatorId, creators.id))
+        .where(eq(pages.status, "published"))
+        .orderBy(asc(creators.slug));
+      return rows.map((row) => ({ slug: row.slug, lastModified: row.updatedAt }));
     },
     async create(args) {
       const [row] = await db
@@ -91,6 +108,7 @@ export interface PageService {
   ensurePage(creatorId: string, title?: string): Promise<Page>;
   getByCreatorId(creatorId: string): Promise<Page | undefined>;
   getPublishedBySlug(slug: string): Promise<Page | undefined>;
+  listPublishedWithCreator(): Promise<PublishedPageEntry[]>;
   update(args: UpdatePageArgs): Promise<Result<Page, PageError>>;
   setStatus(creatorId: string, status: string): Promise<Result<Page, PageError>>;
 }
@@ -109,6 +127,10 @@ export function createPageService(repository: PageRepository, isPublishable: Pub
 
     getPublishedBySlug(slug) {
       return repository.findPublishedBySlug(slug);
+    },
+
+    listPublishedWithCreator() {
+      return repository.listPublishedWithCreator();
     },
 
     async update(args) {

@@ -29,6 +29,9 @@ export const Route = createFileRoute("/dashboard")({
     session: await getSession(),
     dashboard: await getDashboard(),
   }),
+  // Private page: noindex rather than a robots.txt block, so a crawler that
+  // reaches it from an inbound link still reads the directive.
+  head: () => ({ meta: [{ title: "Dashboard · Biova" }, { name: "robots", content: "noindex, nofollow" }] }),
   component: DashboardPage,
 });
 

@@ -58,6 +58,20 @@ describe("page service", () => {
     await pages.setStatus(creatorId, "published");
   });
 
+  test("lists only published pages with their slug and last-modified date", async () => {
+    await pages.setStatus(creatorId, "draft");
+    expect(await pages.listPublishedWithCreator()).toEqual([]);
+
+    await pages.setStatus(creatorId, "published");
+    const listed = await pages.listPublishedWithCreator();
+    expect(listed.map((entry) => entry.slug)).toEqual(["pager"]);
+    expect(listed[0]?.lastModified).toBeInstanceOf(Date);
+
+    await pages.setStatus(creatorId, "draft");
+    expect(await pages.listPublishedWithCreator()).toEqual([]);
+    await pages.setStatus(creatorId, "published");
+  });
+
   test("rejects unknown statuses and invalid transitions", async () => {
     const unknown = await pages.setStatus(creatorId, "live");
     expect(unknown).toEqual({ ok: false, error: "invalid_input" });

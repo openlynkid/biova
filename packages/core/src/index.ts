@@ -181,6 +181,17 @@ export async function resolvePublishedCreatorId(services: BiovaServices, slug: s
   return creator.id;
 }
 
+export interface SitemapPage {
+  slug: string;
+  lastModified: Date;
+}
+
+// Every published page, for the sitemap. Only published pages are listed, so a
+// draft or archived page is never advertised to a crawler.
+export function listPublishedPages(services: BiovaServices): Promise<SitemapPage[]> {
+  return services.pages.listPublishedWithCreator();
+}
+
 export interface PublicProduct {
   // Exposed so the public page can report a product_view event against the
   // right row; it is a random uuid and reveals nothing about the product.

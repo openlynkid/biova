@@ -129,6 +129,23 @@ formatted as whole rupiah (`formatPriceIdr`). Only published products are in the
 read model, so drafts and archived items stay private. Each product links to
 `/checkout/:username/:productSlug`, where a visitor can buy it without signing in.
 
+### SEO
+
+The page head carries a canonical link, `og:url`, `og:site_name` and the Twitter
+card set, all built from `APP_URL` rather than the request host, so a preview or
+tunnel never becomes the canonical origin. It also emits schema.org structured
+data (a `Person` for the creator, plus an `ItemList` of published products) via
+the router's `script:ld+json` slot.
+
+`/sitemap.xml` lists the home page and every published creator page with a
+`<lastmod>`, and `/robots.txt` allows crawling, disallows only non-HTML endpoints
+(`/api/`, `/download/`) and advertises the sitemap. Private HTML pages
+(`/dashboard`, `/checkout/...`, `/order/...`) are not disallowed; they carry
+`robots: noindex, nofollow` in their own head instead, because a crawler blocked
+by robots.txt never reads that directive. The pure builders live in
+`@biova/shared/seo` (`buildSitemapXml`, `buildRobotsTxt`, `creatorPageJsonLd`,
+`absoluteUrl`, `escapeXml`). See `docs/adr/0011-seo.md`.
+
 ## Checkout and orders
 
 A visitor buys a product from the checkout page: name, email and optional phone.

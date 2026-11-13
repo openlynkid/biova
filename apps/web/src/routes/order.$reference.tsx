@@ -17,7 +17,7 @@ export const Route = createFileRoute("/order/$reference")({
     if (!order) throw notFound();
     return order;
   },
-  head: () => ({ meta: [{ title: "Your order · Biova" }] }),
+  head: () => ({ meta: [{ title: "Your order · Biova" }, { name: "robots", content: "noindex, nofollow" }] }),
   component: OrderPage,
   notFoundComponent: NotFound,
 });

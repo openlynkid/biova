@@ -1,14 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createServices, type BiovaServices } from "@biova/core";
-import { createOrderSchema, orderReferenceSchema } from "@biova/shared";
-
-// Loaded lazily so the browser bundle never pulls in the database driver.
-let servicesPromise: Promise<BiovaServices> | undefined;
-function getServices(): Promise<BiovaServices> {
-  servicesPromise ??= import("@biova/database").then(({ db }) => createServices(db));
-  return servicesPromise;
-}
+import { getServices } from "./services";
+import { createOrderSchema } from "@biova/shared";
 
 export interface CheckoutProduct {
   creatorSlug: string;
@@ -89,9 +82,11 @@ export interface OrderView {
 }
 
 // Buyer order lookup. The reference acts as the bearer credential; the page is
-// reachable only with the value returned from checkout.
+// reachable only with the value returned from checkout. The reference is not
+// shape-validated here: a malformed value must render the not-found view, not a
+// validation error, and the lookup is a parameterized query by unique column.
 export const getOrder = createServerFn({ method: "GET" })
-  .validator(z.object({ reference: orderReferenceSchema }))
+  .validator(z.object({ reference: z.string().min(1).max(64) }))
   .handler(async ({ data }): Promise<OrderView | null> => {
     const services = await getServices();
     const found = await services.orders.getByReference(data.reference);

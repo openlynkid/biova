@@ -1,6 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { formatPriceIdr } from "@biova/shared/product";
+import { absoluteUrl, creatorPageJsonLd } from "@biova/shared/seo";
 import { getPublicPage } from "../server/public-page";
 import { trackEvent } from "../tracking";
 
@@ -10,19 +11,44 @@ export const Route = createFileRoute("/$username")({
     if (!page) throw notFound();
     return page;
   },
-  head: ({ loaderData }) => ({
-    meta: loaderData
-      ? [
-          { title: `${loaderData.creator.displayName} · Biova` },
-          {
-            name: "description",
-            content: loaderData.creator.bio ?? `${loaderData.creator.displayName} on Biova`,
-          },
-          { property: "og:title", content: loaderData.creator.displayName },
-          { property: "og:type", content: "profile" },
-        ]
-      : [{ title: "Not found · Biova" }],
-  }),
+  // Absolute canonical and Open Graph URLs are built from the configured site
+  // origin (not the request host), so a page served from a preview or tunnel
+  // does not advertise that host as canonical. The `script:ld+json` slot is
+  // serialized and escaped by the router's head renderer.
+  head: ({ loaderData }) => {
+    if (!loaderData) return { meta: [{ title: "Not found · Biova" }, { name: "robots", content: "noindex" }] };
+    const { creator, siteUrl, products } = loaderData;
+    const url = absoluteUrl(siteUrl, `/${creator.slug}`);
+    const description = creator.bio ?? `${creator.displayName} on Biova`;
+    return {
+      meta: [
+        { title: `${creator.displayName} · Biova` },
+        { name: "description", content: description },
+        { property: "og:title", content: creator.displayName },
+        { property: "og:description", content: description },
+        { property: "og:type", content: "profile" },
+        { property: "og:url", content: url },
+        { property: "og:site_name", content: "Biova" },
+        { name: "twitter:card", content: "summary" },
+        { name: "twitter:title", content: creator.displayName },
+        { name: "twitter:description", content: description },
+        {
+          "script:ld+json": creatorPageJsonLd({
+            name: creator.displayName,
+            url,
+            description: creator.bio,
+            products: products.map((product) => ({
+              name: product.title,
+              url: absoluteUrl(siteUrl, `/checkout/${creator.slug}/${product.slug}`),
+              priceIdr: product.priceIdr,
+              description: product.description,
+            })),
+          }),
+        },
+      ],
+      links: [{ rel: "canonical", href: url }],
+    };
+  },
   component: PublicPage,
   notFoundComponent: NotFound,
 });

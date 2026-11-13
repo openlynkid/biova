@@ -12,7 +12,10 @@ export const Route = createFileRoute("/checkout/$username/$productSlug")({
     return product;
   },
   head: ({ loaderData }) => ({
-    meta: loaderData ? [{ title: `Buy ${loaderData.title} · Biova` }] : [{ title: "Not found · Biova" }],
+    meta: [
+      { title: loaderData ? `Buy ${loaderData.title} · Biova` : "Not found · Biova" },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
   }),
   component: CheckoutPage,
   notFoundComponent: NotFound,
