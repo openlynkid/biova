@@ -39,6 +39,7 @@ const STATUS_BY_ERROR: Record<string, number> = {
   not_installed: 409,
   permission_not_declared: 422,
   plugin_disabled: 409,
+  unsupported_type: 415,
 };
 
 function errorResponse(set: { status?: number | string }, error: string) {
@@ -706,6 +707,46 @@ export function createApp(deps: AppDeps) {
       const result = await auth.services.plugins.reorderBlocks(auth.creator.id, page.id, ids);
       if (!result.ok) return errorResponse(set, result.error);
       return { ids: result.value.ids };
+    })
+
+    // Creator branding (avatar, cover). Uploads are multipart; the bytes are
+    // buffered and handed to the media service, which validates the type and
+    // size and writes them under a server-generated key. One image per slot.
+    .put("/v1/media/:kind", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      let form: FormData;
+      try {
+        form = await request.formData();
+      } catch {
+        return errorResponse(set, "invalid_input");
+      }
+      const file = form.get("file");
+      if (!(file instanceof File)) return errorResponse(set, "invalid_input");
+
+      const result = await auth.services.media.upload({
+        creatorId: auth.creator.id,
+        kind: params.kind,
+        contentType: file.type || "application/octet-stream",
+        data: new Uint8Array(await file.arrayBuffer()),
+      });
+      if (!result.ok) return errorResponse(set, result.error);
+      return { kind: result.value.kind };
+    })
+    .delete("/v1/media/:kind", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const result = await auth.services.media.remove(auth.creator.id, params.kind);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { kind: result.value.kind };
     })
 
     // Public analytics ingest. No session: the visitor is anonymous by design.

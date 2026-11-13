@@ -1,7 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [".env", ".env.*"],
-  "globalEnv": ["NODE_ENV", "DATABASE_URL", "DB_POOL_MAX", "APP_URL", "API_URL", "PORT", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "BETTER_AUTH_ALLOWED_HOSTS", "CORS_ORIGINS", "MIDTRANS_SERVER_KEY", "MIDTRANS_IS_PRODUCTION", "PAYMENT_FAKE_SECRET"],
+  "globalEnv": ["NODE_ENV", "DATABASE_URL", "DB_POOL_MAX", "APP_URL", "API_URL", "PORT", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "BETTER_AUTH_ALLOWED_HOSTS", "CORS_ORIGINS", "MIDTRANS_SERVER_KEY", "MIDTRANS_IS_PRODUCTION", "PAYMENT_FAKE_SECRET", "STORAGE_DIR", "MAX_ASSET_BYTES", "MAX_MEDIA_BYTES"],
   "tasks": {
     "dev": { "cache": false, "persistent": true },
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".output/**", "build/**"] },

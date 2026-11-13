@@ -300,3 +300,20 @@ export const notificationOutbox = pgTable("notification_outbox", {
   index("notification_outbox_creator_created_idx").on(table.creatorId, table.createdAt),
   index("notification_outbox_status_idx").on(table.status),
 ]);
+
+// Creator branding images (avatar, cover). One row per (creator, kind): a
+// replacement overwrites the same row and points at a new storage key, so the
+// public page reads one URL per slot. The bytes are public, so this is separate
+// from `product_assets`, whose files are gated behind an entitlement.
+export const creatorMedia = pgTable("creator_media", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  creatorId: uuid("creator_id").notNull().references(() => creators.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 16 }).notNull(),
+  contentType: varchar("content_type", { length: 128 }).notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  storageKey: varchar("storage_key", { length: 200 }).notNull(),
+  ...timestamps(),
+}, (table) => [
+  uniqueIndex("creator_media_creator_kind_uq").on(table.creatorId, table.kind),
+  uniqueIndex("creator_media_storage_key_uq").on(table.storageKey),
+]);

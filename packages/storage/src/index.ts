@@ -3,6 +3,8 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { MAX_ASSET_BYTES } from "@biova/shared";
 
+export { sweepOrphans, type SweepResult } from "./sweep";
+
 // Where a stored file lives. `key` is opaque to callers: they receive it from
 // `put` and hand it back to `get`/`remove`. The driver decides what the key
 // means, so a future S3 driver can key on the object name instead of a path.

@@ -6,6 +6,7 @@ export * from "./order";
 export * from "./asset";
 export * from "./seo";
 export * from "./analytics";
+export * from "./media";
 export * from "./notification";
 export * from "./plugin";
 export * from "./result";

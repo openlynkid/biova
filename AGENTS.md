@@ -31,11 +31,13 @@ shape day-to-day decisions:
   metadata, JSON-LD structured data, sitemap.xml, robots.txt), paid-order
   notifications (buyer receipt and creator sale alert through a deduped outbox)
   and conversion improvements (per-product conversion, an explicit buy action on
-  the product card) are implemented.
-- Domain boundaries to build next: growth and media. Each domain owns its tables,
-  repositories and service APIs, and exposes a public interface (ADR-0002,
-  ADR-0004). Creator, page, links, products, orders, payments, delivery,
-  analytics and notifications are done.
+  the product card) are implemented. Phase 5 complete: the hybrid plugin system
+  (catalog, install/enable, per-plugin permissions, settings, page blocks) is
+  implemented.
+- Domain boundaries built so far: creator, page, links, products, orders,
+  payments, delivery, analytics, notifications, media and the plugin system.
+  Each domain owns its tables, repositories and service APIs, and exposes a
+  public interface (ADR-0002, ADR-0004).
 - Payments use Midtrans. Payment status may only change from a verified server
   webhook, and webhooks must be idempotent.
 - Paid files must never be reachable by public URL or by client-asserted
@@ -69,6 +71,7 @@ Map before adding tables so the same concept is not created twice:
 | payment_webhook_event | `payment_webhook_events` |
 | product_entitlement | `product_entitlements` |
 | product_asset | `product_assets` |
+| creator_media | `creator_media` |
 | (notifications, outbox pattern) | `notification_outbox` |
 | creator_profile, page_theme, link_click_event, page_view_event | not built yet |
 
@@ -89,10 +92,14 @@ Schema constraints worth knowing:
   `products`.
 - `product_entitlements` has a unique `(order_id, product_id)` index, so a
   replayed webhook cannot grant a buyer the same product twice.
-- Deleting a product or a creator cascades `product_assets` rows but not the
-  stored bytes. Those become unreachable orphans; `bun run storage:sweep`
-  reports them and `--delete` removes them. This is a manual command, not an
-  automatic job.
+- `creator_media` holds one row per `(creator_id, kind)` (unique index), where
+  `kind` is `avatar` or `cover`; replacing an image updates the same row and
+  swaps `storage_key`. `storage_key` is unique and server-generated and is never
+  exposed through the API. It cascades from `creators`.
+- Deleting a product, a creator or a media slot cascades the rows that reference
+  a blob but not the stored bytes. Those become unreachable orphans;
+  `bun run storage:sweep` reports them and `--delete` removes them. This is a
+  manual command, not an automatic job.
 
 ## Environment
 
@@ -168,6 +175,13 @@ a build step that requires `DATABASE_URL`.
   buyer delivery read model. Reaches orders and products through injected
   functions, so it imports neither domain. Download checks: token signature and
   expiry, entitlement active, asset belongs to the granted product.
+- `packages/media`: creator branding (avatar, cover). Owns `creator_media` (one
+  row per `(creator_id, kind)`; replacing an image updates the row and swaps the
+  storage key). The service validates the image content type and size, writes
+  bytes through the shared `BlobStorage` port, removes the replaced blob after
+  the row points at the new one, and exposes a public read model of versioned
+  URLs (`mediaUrl`) so a replacement busts the cache. The public route only
+  serves branding for a published page, so a draft page's images never leak.
 - `packages/analytics`: page analytics. Owns `page_view_events`,
   `link_click_events` and `product_view_events` (raw, append-only). Every number
   in the dashboard summary is computed on read from those rows; links, product

@@ -18,7 +18,7 @@ export const Route = createFileRoute("/$username")({
   // serialized and escaped by the router's head renderer.
   head: ({ loaderData }) => {
     if (!loaderData) return { meta: [{ title: "Not found · Biova" }, { name: "robots", content: "noindex" }] };
-    const { creator, siteUrl, products } = loaderData;
+    const { creator, siteUrl, products, branding } = loaderData;
     const url = absoluteUrl(siteUrl, `/${creator.slug}`);
     const description = creator.bio ?? `${creator.displayName} on Biova`;
     return {
@@ -30,6 +30,9 @@ export const Route = createFileRoute("/$username")({
         { property: "og:type", content: "profile" },
         { property: "og:url", content: url },
         { property: "og:site_name", content: "Biova" },
+        ...(branding?.cover || branding?.avatar
+          ? [{ property: "og:image", content: absoluteUrl(siteUrl, (branding.cover ?? branding.avatar) as string) }]
+          : []),
         { name: "twitter:card", content: "summary" },
         { name: "twitter:title", content: creator.displayName },
         { name: "twitter:description", content: description },
@@ -63,8 +66,10 @@ function themeStyle(theme: { accent?: string; background?: string; textColor?: s
 }
 
 function PublicPage() {
-  const { creator, page, links, products, blocks } = Route.useLoaderData();
+  const { creator, page, links, products, blocks, branding } = Route.useLoaderData();
   const theme = page.theme ?? {};
+  const avatar = branding?.avatar;
+  const cover = branding?.cover;
 
   // One page_view per mount, reported once for the visitor's browser. The hook
   // depends only on the slug, so client-side navigation between creators counts
@@ -81,7 +86,9 @@ function PublicPage() {
         <Link className="brand" to="/">biova<span>·</span></Link>
         <span className="nav-label">@{creator.slug}</span>
       </nav>
-      <header className="profile">
+      <header className={`profile${cover ? " has-cover" : ""}`}>
+        {cover ? <img className="profile-cover" src={cover} alt="" /> : null}
+        {avatar ? <img className="profile-avatar" src={avatar} alt={`${creator.displayName} avatar`} /> : null}
         <h1>{creator.displayName}</h1>
         {creator.bio ? <p className="intro">{creator.bio}</p> : null}
       </header>

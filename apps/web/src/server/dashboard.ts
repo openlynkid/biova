@@ -23,6 +23,7 @@ import {
   pluginIdSchema,
   pluginPermissionSchema,
   pluginSettingsSchema,
+  mediaKindSchema,
   type AnalyticsRange,
   type AssetView,
   type PageTheme,
@@ -130,6 +131,8 @@ export interface DashboardData {
   analyticsDays: AnalyticsDayView[];
   plugins: PluginPanelView[];
   blocks: BlockView[];
+  // Branding image URLs keyed by slot; a missing slot means "not uploaded yet".
+  branding: Partial<Record<"avatar" | "cover", string>>;
 }
 
 // The dashboard loader: one round trip for creator, page and links.
@@ -144,11 +147,12 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
   const links = await services.links.list(creator.id);
   const products = await services.products.list(creator.id);
   const orders = await services.orders.listByCreator(creator.id);
-  const [analytics, timeseries, plugins, blocks] = await Promise.all([
+  const [analytics, timeseries, plugins, blocks, branding] = await Promise.all([
     services.analytics.summary(creator.id, "30d"),
     services.analytics.timeseries(creator.id, "30d"),
     services.plugins.listForCreator(creator.id),
     services.plugins.listBlocks(creator.id, page.id),
+    services.media.publicUrls(creator.slug, creator.id),
   ]);
 
   return {
@@ -170,6 +174,7 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
     analyticsDays: timeseries.days,
     plugins: plugins.map(toPluginView),
     blocks: blocks.ok ? blocks.value.map(toBlockView) : [],
+    branding,
   };
 });
 
@@ -495,6 +500,36 @@ export const reorderProductAssets = createServerFn({ method: "POST" })
 
 // Human-readable size for the upload list.
 export const assetSizeLabel = formatBytes;
+
+// --- Branding media (avatar, cover) ---------------------------------------
+
+export const uploadBranding = createServerFn({ method: "POST" })
+  .validator((data: FormData) => data)
+  .handler(async ({ data }): Promise<{ ok: true; data: { kind: string } } | { ok: false; error: string }> => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false, error: "not_found" };
+
+    const kind = String(data.get("kind") ?? "");
+    const file = data.get("file");
+    if (!(file instanceof File)) return { ok: false, error: "invalid_input" };
+
+    const result = await services.media.upload({
+      creatorId: creator.id,
+      kind,
+      contentType: file.type || "application/octet-stream",
+      data: new Uint8Array(await file.arrayBuffer()),
+    });
+    return result.ok ? { ok: true, data: result.value } : { ok: false, error: result.error };
+  });
+
+export const removeBranding = createServerFn({ method: "POST" })
+  .validator(z.object({ kind: mediaKindSchema }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.media.remove(creator.id, data.kind);
+    return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
+  });
 
 // --- Plugins and page blocks ----------------------------------------------
 

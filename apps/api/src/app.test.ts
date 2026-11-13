@@ -551,6 +551,44 @@ describe("biova api", () => {
     expect(await response.json()).toEqual({ error: "not_found" });
   });
 
+  test("a creator uploads branding and it appears on the published public page", async () => {
+    // Publish alice's page so the public read model exposes branding.
+    await request("/v1/page/status", { method: "PUT", body: JSON.stringify({ status: "published" }) }, aliceId);
+
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array([137, 80, 78, 71])], "avatar.png", { type: "image/png" }));
+    const uploaded = await app.handle(
+      new Request("http://localhost/v1/media/avatar", { method: "PUT", headers: { "x-test-user": aliceId }, body: form }),
+    );
+    expect(uploaded.status).toBe(200);
+    expect(await uploaded.json()).toEqual({ kind: "avatar" });
+
+    const page = await request("/v1/public/alice");
+    const { branding } = (await page.json()) as { branding: { avatar?: string; cover?: string } };
+    expect(branding.avatar).toMatch(/^\/media\/alice\/avatar\?v=\d+$/);
+    expect(branding.cover).toBeUndefined();
+
+    // A non-image upload is refused with 415.
+    const zipForm = new FormData();
+    zipForm.set("file", new File([new Uint8Array([1, 2, 3])], "x.zip", { type: "application/zip" }));
+    const rejected = await app.handle(
+      new Request("http://localhost/v1/media/cover", { method: "PUT", headers: { "x-test-user": aliceId }, body: zipForm }),
+    );
+    expect(rejected.status).toBe(415);
+    expect(await rejected.json()).toEqual({ error: "unsupported_type" });
+
+    // Removing clears the slot.
+    const removed = await request("/v1/media/avatar", { method: "DELETE" }, aliceId);
+    expect(removed.status).toBe(200);
+    const after = await request("/v1/public/alice");
+    expect(((await after.json()) as { branding: Record<string, string> }).branding.avatar).toBeUndefined();
+  });
+
+  test("branding requires a session and only touches the caller's own slots", async () => {
+    const anonymous = await app.handle(new Request("http://localhost/v1/media/avatar", { method: "DELETE" }));
+    expect(anonymous.status).toBe(401);
+  });
+
   test("unknown errors do not leak internals", async () => {
     const originalError = console.error;
     console.error = () => {};

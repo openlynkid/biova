@@ -23,7 +23,8 @@
     "@biova/storage": "workspace:*",
     "@biova/analytics": "workspace:*",
     "@biova/plugins": "workspace:*",
-    "@biova/notifications": "workspace:*"
+    "@biova/notifications": "workspace:*",
+    "@biova/media": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3"

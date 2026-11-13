@@ -18,6 +18,7 @@ import { Route as DownloadTokenRouteImport } from './routes/download.$token'
 import { Route as OrderReferenceRouteImport } from './routes/order.$reference'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as CheckoutUsernameProductSlugRouteImport } from './routes/checkout.$username.$productSlug'
+import { Route as MediaSlugKindRouteImport } from './routes/media.$slug.$kind'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -65,6 +66,11 @@ const CheckoutUsernameProductSlugRoute =
     path: '/checkout/$username/$productSlug',
     getParentRoute: () => rootRouteImport,
   } as any)
+const MediaSlugKindRoute = MediaSlugKindRouteImport.update({
+  id: '/media/$slug/$kind',
+  path: '/media/$slug/$kind',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/order/$reference': typeof OrderReferenceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/checkout/$username/$productSlug': typeof CheckoutUsernameProductSlugRoute
+  '/media/$slug/$kind': typeof MediaSlugKindRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/order/$reference': typeof OrderReferenceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/checkout/$username/$productSlug': typeof CheckoutUsernameProductSlugRoute
+  '/media/$slug/$kind': typeof MediaSlugKindRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   '/order/$reference': typeof OrderReferenceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/checkout/$username/$productSlug': typeof CheckoutUsernameProductSlugRoute
+  '/media/$slug/$kind': typeof MediaSlugKindRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -112,6 +121,7 @@ export interface FileRouteTypes {
     | '/order/$reference'
     | '/api/auth/$'
     | '/checkout/$username/$productSlug'
+    | '/media/$slug/$kind'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -123,6 +133,7 @@ export interface FileRouteTypes {
     | '/order/$reference'
     | '/api/auth/$'
     | '/checkout/$username/$productSlug'
+    | '/media/$slug/$kind'
   id:
     | '__root__'
     | '/'
@@ -134,6 +145,7 @@ export interface FileRouteTypes {
     | '/order/$reference'
     | '/api/auth/$'
     | '/checkout/$username/$productSlug'
+    | '/media/$slug/$kind'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -146,6 +158,7 @@ export interface RootRouteChildren {
   OrderReferenceRoute: typeof OrderReferenceRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   CheckoutUsernameProductSlugRoute: typeof CheckoutUsernameProductSlugRoute
+  MediaSlugKindRoute: typeof MediaSlugKindRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -213,6 +226,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CheckoutUsernameProductSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/media/$slug/$kind': {
+      id: '/media/$slug/$kind'
+      path: '/media/$slug/$kind'
+      fullPath: '/media/$slug/$kind'
+      preLoaderRoute: typeof MediaSlugKindRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -226,6 +246,7 @@ const rootRouteChildren: RootRouteChildren = {
   OrderReferenceRoute: OrderReferenceRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   CheckoutUsernameProductSlugRoute: CheckoutUsernameProductSlugRoute,
+  MediaSlugKindRoute: MediaSlugKindRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

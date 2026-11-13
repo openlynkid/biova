@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { productAssets } from "@biova/database/schema";
 import type { Database } from "@biova/database/types";
 import { createAssetSchema, MAX_ASSET_BYTES, type AssetView, type Result, ok, fail } from "@biova/shared";
-import { findOrphanKeys, type BlobStorage } from "@biova/storage";
+import { sweepOrphans, type BlobStorage, type SweepResult } from "@biova/storage";
 
 export type ProductAsset = typeof productAssets.$inferSelect;
 
@@ -98,31 +98,17 @@ export function createAssetRepository(db: Database): AssetRepository {
   };
 }
 
-export interface AssetSweepResult {
-  objects: number;
-  referenced: number;
-  orphans: string[];
-  removed: number;
-}
+export type AssetSweepResult = SweepResult;
 
-// Reconciles the store against the rows. Deleting a product or creator cascades
-// the `product_assets` rows but not the bytes, so this is the only path that
-// removes them. It reports by default; `delete: true` is the destructive form.
-// Standalone so the CLI sweep can run it without a service or a creator.
+// Reconciles the store against the product-asset rows alone. The workspace-wide
+// sweep (scripts/storage-sweep.ts) unions every domain's keys instead; this
+// narrower form stays for callers that only own product assets.
 export async function sweepOrphanedAssets(
   storage: BlobStorage,
   repository: AssetRepository,
   options?: { delete?: boolean },
 ): Promise<AssetSweepResult> {
-  const [storeKeys, referencedKeys] = await Promise.all([storage.list(), repository.listStorageKeys()]);
-  const orphans = findOrphanKeys(storeKeys, referencedKeys);
-  const result: AssetSweepResult = { objects: storeKeys.length, referenced: referencedKeys.length, orphans, removed: 0 };
-  if (!options?.delete) return result;
-  for (const key of orphans) {
-    await storage.remove(key);
-    result.removed += 1;
-  }
-  return result;
+  return sweepOrphans(storage, await repository.listStorageKeys(), options);
 }
 
 export interface AssetService {

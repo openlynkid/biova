@@ -111,6 +111,7 @@
         "@biova/database": "workspace:*",
         "@biova/delivery": "workspace:*",
         "@biova/links": "workspace:*",
+        "@biova/media": "workspace:*",
         "@biova/notifications": "workspace:*",
         "@biova/orders": "workspace:*",
         "@biova/page": "workspace:*",
@@ -177,6 +178,21 @@
         "@biova/shared": "workspace:*",
         "drizzle-orm": "0.45.4",
         "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@biova/creator": "workspace:*",
+        "@electric-sql/pglite": "0.5.16",
+        "typescript": "5.9.3",
+      },
+    },
+    "packages/media": {
+      "name": "@biova/media",
+      "version": "0.1.0",
+      "dependencies": {
+        "@biova/database": "workspace:*",
+        "@biova/shared": "workspace:*",
+        "@biova/storage": "workspace:*",
+        "drizzle-orm": "0.45.4",
       },
       "devDependencies": {
         "@biova/creator": "workspace:*",
@@ -413,6 +429,8 @@
     "@biova/delivery": ["@biova/delivery@workspace:packages/delivery"],
 
     "@biova/links": ["@biova/links@workspace:packages/links"],
+
+    "@biova/media": ["@biova/media@workspace:packages/media"],
 
     "@biova/notifications": ["@biova/notifications@workspace:packages/notifications"],
 

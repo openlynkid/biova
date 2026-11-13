@@ -18,6 +18,7 @@ import {
   reorderBlocks,
   reorderLinks,
   reorderProducts,
+  removeBranding,
   setPageStatus,
   setPluginEnabled,
   setPluginPermission,
@@ -29,6 +30,7 @@ import {
   updatePluginSettings,
   updateProduct,
   updateProfile,
+  uploadBranding,
   uploadProductAsset,
   type AnalyticsDetail,
   type BlockView,
@@ -158,7 +160,7 @@ function Onboarding() {
 
 function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeof getDashboard>>>; email: string }) {
   const router = useRouter();
-  const { creator, page, links, products, orders, analytics, analyticsDays, plugins, blocks } = data;
+  const { creator, page, links, products, orders, analytics, analyticsDays, plugins, blocks, branding } = data;
   const published = page?.status === "published";
   const [error, setError] = useState<string | null>(null);
   // The range control re-reads summary and daily chart together. The loader
@@ -202,6 +204,7 @@ function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeo
       <ProfileForm creator={creator} onSave={(payload) => run(async () => updateProfile({ data: payload }))} />
       <AnalyticsPanel analytics={detail.summary} days={detail.days} range={range} onRangeChange={selectRange} />
       <RevenuePanel analytics={detail.summary} days={detail.days} orders={orders} range={range} />
+      <BrandingPanel slug={creator.slug} branding={branding} onError={setError} />
       <PageForm page={page} onSave={(payload) => run(async () => updatePage({ data: payload }))} />
       <LinksEditor links={links} onError={setError} />
       <ProductsEditor products={products} onError={setError} />
@@ -278,6 +281,90 @@ function PageForm({ page, onSave }: { page: { title: string; theme: Record<strin
 }
 
 type LinkRow = { id: string; title: string; url: string; description: string | null; icon: string | null; enabled: boolean };
+
+function BrandingPanel({
+  slug,
+  branding,
+  onError,
+}: {
+  slug: string;
+  branding: Partial<Record<"avatar" | "cover", string>>;
+  onError: (message: string | null) => void;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function upload(kind: "avatar" | "cover", file: File) {
+    setBusy(kind);
+    onError(null);
+    try {
+      const form = new FormData();
+      form.set("kind", kind);
+      form.set("file", file);
+      const result = await uploadBranding({ data: form });
+      if (!result.ok) onError(result.error);
+      await router.invalidate();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function remove(kind: "avatar" | "cover") {
+    onError(null);
+    const result = await removeBranding({ data: { kind } });
+    if (!result.ok) onError(result.error);
+    await router.invalidate();
+  }
+
+  const slots = [
+    { kind: "avatar" as const, label: "Avatar", hint: "Square image shown beside your name." },
+    { kind: "cover" as const, label: "Cover", hint: "Wide image behind your profile." },
+  ];
+
+  return (
+    <section className="panel">
+      <div className="eyebrow">BRANDING</div>
+      <p className="intro">Upload a profile image. Images are public and shown on your page at /{slug}.</p>
+      <div className="plugin-grid">
+        {slots.map(({ kind, label, hint }) => {
+          const url = branding[kind];
+          return (
+            <div className="branding-slot" key={kind}>
+              <div className="branding-preview">
+                {url ? <img src={url} alt={`${label} preview`} /> : <span className="branding-empty">{label[0]}</span>}
+              </div>
+              <div className="branding-body">
+                <strong>{label}</strong>
+                <small>{hint}</small>
+              </div>
+              <div className="row-actions">
+                <label className="chip as-label">
+                  {busy === kind ? "Uploading…" : url ? "Replace" : "Upload"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
+                    hidden
+                    disabled={busy !== null}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void upload(kind, file);
+                    }}
+                  />
+                </label>
+                {url ? (
+                  <button type="button" className="chip danger" onClick={() => void remove(kind)} disabled={busy !== null}>
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function LinksEditor({ links, onError }: { links: LinkRow[]; onError: (message: string | null) => void }) {
   const router = useRouter();

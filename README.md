@@ -63,6 +63,7 @@ reaches the database. See `docs/adr/0006-creator-dashboard.md`.
   `src/index.ts` wires real dependencies. Keep business rules in packages, not route handlers.
 - `packages/core`: composition root that builds the domain services and exposes the public read model.
 - `packages/creator`, `packages/page`, `packages/links`, `packages/products`, `packages/orders`: domain packages (repository + service). Product assets (upload, list, remove, reorder) live in `packages/products` as a second repository and service.
+- `packages/media`: creator branding (avatar and cover). It stores one row per slot and serves public, cache-busting image URLs, reusing the `BlobStorage` port.
 - `packages/payments`: payment provider abstraction with a Midtrans adapter and a fake provider for tests and local development.
 - `packages/storage`: `BlobStorage` port plus a local filesystem driver. Keys are server-generated, so no caller chooses a path.
 - `packages/delivery`: signed, time-boxed download tokens and the buyer-facing delivery read model. It reaches orders and products through injected functions.
@@ -104,6 +105,8 @@ never read from the request.
 | GET | `/v1/products/:id/assets` | yes | List a product's files |
 | DELETE | `/v1/products/assets/:assetId` | yes | Remove a file and its bytes |
 | PUT | `/v1/products/:id/assets/reorder` | yes | Set the file order |
+| PUT | `/v1/media/:kind` | yes | Upload the avatar or cover (multipart `file`) |
+| DELETE | `/v1/media/:kind` | yes | Remove the avatar or cover and its bytes |
 | GET | `/v1/orders` | yes | List the creator's orders |
 | POST | `/v1/checkout` | no | Start a checkout for a published product |
 | GET | `/v1/orders/:reference` | no | Buyer order status (reference is the bearer token) |
@@ -114,7 +117,8 @@ never read from the request.
 
 Errors are stable codes (`unauthorized`, `invalid_input`, `not_found`,
 `slug_taken`, `invalid_transition`, `not_publishable`, `too_large`,
-`invalid_token`, `unavailable`, `rate_limited`, `internal_error`). Authenticated requests are rate limited per user; set
+`unsupported_type`, `invalid_token`, `unavailable`, `rate_limited`,
+`internal_error`). Authenticated requests are rate limited per user; set
 `CORS_ORIGINS` to the comma-separated list of allowed browser origins.
 
 ## Public page
@@ -199,9 +203,24 @@ the asset belongs to the granted product; revoking an entitlement stops new
 downloads immediately. The storage key never appears in a URL or a response. See
 `docs/adr/0009-asset-storage-and-delivery.md`.
 
-Deleting a product or a creator cascades the asset rows but leaves the uploaded
-bytes in the store. `bun run storage:sweep` reconciles the two and lists what
-nothing references; add `--delete` to remove those files.
+Deleting a product, a creator or a branding image cascades the rows that
+reference a blob but leaves the uploaded bytes in the store. `bun run
+storage:sweep` reconciles the store against every row and lists what nothing
+references; add `--delete` to remove those files.
+
+## Branding
+
+A creator sets an avatar and a cover from the dashboard (`BRANDING` panel).
+Uploads are multipart and the bytes are written under `STORAGE_DIR` with a
+server-generated key; only images (`image/png`, `image/jpeg`, `image/webp`,
+`image/avif`, `image/gif`) up to 5 MB are accepted, so the slot cannot host an
+arbitrary file. There is one row per slot: replacing an image swaps the key and
+removes the previous blob.
+
+The images are public and appear on the published page at `/media/:username/:kind`
+(rendered as the profile avatar and cover). The route serves them only while the
+page is published, so a draft page's branding never leaks, and the URL carries a
+version so a replacement busts the cache. See `docs/adr/0015-creator-media.md`.
 
 ## Analytics
 
@@ -301,9 +320,11 @@ no environment variables set, and CI runs exactly these four. Domain and API
 tests run against PGlite (`@biova/database/testing`) with the real Drizzle
 migrations applied, so they exercise actual SQL without a database server.
 
-Test coverage today: creator, page, links, products and orders services (39
-tests), the API routes and isolation rules (19 tests), the public read model (4
-tests), shared schemas (16 tests) and the payment providers (6 tests).
+Test coverage today: 205 tests across the workspace — the domain services
+(creator, page, links, products, orders, media, delivery, analytics, plugins,
+notifications), the API routes and isolation rules, the public read model, the
+shared schemas and the payment providers. Tests run against an in-process
+Postgres (PGlite) with the real migrations applied.
 
 Notes from earlier validation passes:
 

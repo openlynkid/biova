@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalStorage, findOrphanKeys, type BlobStorage } from "./index";
+import { sweepOrphans } from "./sweep";
 
 let root: string;
 let storage: BlobStorage;
@@ -86,5 +87,25 @@ describe("findOrphanKeys", () => {
 
   test("returns nothing for an empty store", () => {
     expect(findOrphanKeys([], ["aa/11111111111111111111111111111111.txt"])).toEqual([]);
+  });
+});
+
+describe("sweepOrphans", () => {
+  test("reports orphans without deleting by default", async () => {
+    const kept = await storage.put({ data: bytes("kept"), contentType: "text/plain", fileName: "k.txt" });
+    await storage.put({ data: bytes("orphan"), contentType: "text/plain", fileName: "o.txt" });
+    const result = await sweepOrphans(storage, [kept.key]);
+    expect(result.orphans).toHaveLength(1);
+    expect(result.removed).toBe(0);
+    expect(await storage.list()).toHaveLength(2);
+  });
+
+  test("removes orphans when delete is set", async () => {
+    const kept = await storage.put({ data: bytes("kept"), contentType: "text/plain", fileName: "k.txt" });
+    const orphan = await storage.put({ data: bytes("orphan"), contentType: "text/plain", fileName: "o.txt" });
+    const result = await sweepOrphans(storage, [kept.key], { delete: true });
+    expect(result.orphans).toEqual([orphan.key]);
+    expect(result.removed).toBe(1);
+    expect(await storage.list()).toEqual([kept.key]);
   });
 });

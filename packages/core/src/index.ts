@@ -22,6 +22,7 @@ import { createFakeProvider, createMidtransProvider, type PaymentProvider } from
 import { createDeliveryService, type DeliveryService } from "@biova/delivery";
 import { createAnalyticsRepository, createAnalyticsService, type AnalyticsService } from "@biova/analytics";
 import { createPluginRepository, createPluginService, type PluginService } from "@biova/plugins";
+import { createMediaRepository, createMediaService, type MediaService } from "@biova/media";
 import type { PluginCatalog, PluginSettings } from "@biova/shared";
 import {
   createNotificationRepository,
@@ -31,7 +32,14 @@ import {
   type NotificationService,
 } from "@biova/notifications";
 import { createLocalStorage, type BlobStorage } from "@biova/storage";
-import { DOWNLOAD_TOKEN_TTL_SECONDS, MAX_ASSET_BYTES, pageThemeSchema, readEnv, type PageTheme } from "@biova/shared";
+import {
+  DOWNLOAD_TOKEN_TTL_SECONDS,
+  MAX_ASSET_BYTES,
+  MAX_MEDIA_BYTES,
+  pageThemeSchema,
+  readEnv,
+  type PageTheme,
+} from "@biova/shared";
 
 // The catalog a process gets when no allowlist is supplied. A deployment passes
 // the real registry; tests and the API may build services without one.
@@ -51,6 +59,7 @@ export interface BiovaServices {
   analytics: AnalyticsService;
   notifications: NotificationService;
   plugins: PluginService;
+  media: MediaService;
 }
 
 // Where a notification links back to. Read from configuration (never from a
@@ -158,6 +167,11 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
     options.pluginCatalog ?? EMPTY_PLUGIN_CATALOG,
   );
 
+  // Branding images (avatar, cover). Owns `creator_media`; the bytes go through
+  // the same BlobStorage port as product assets, but the read model is a public
+  // URL rather than a signed download.
+  const media = createMediaService(createMediaRepository(db), storage, Number(readEnv("MAX_MEDIA_BYTES") ?? MAX_MEDIA_BYTES));
+
   // Checkout resolves the product through this function, so the price always
   // comes from a published row owned by the creator whose slug was requested.
   const orders = createOrderService(
@@ -228,7 +242,7 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
     },
   );
 
-  return { creators, pages, links, products, assets, orders, delivery, analytics, notifications, plugins };
+  return { creators, pages, links, products, assets, orders, delivery, analytics, notifications, plugins, media };
 }
 
 // Resolves the creator behind a published public page. Analytics ingest needs
@@ -265,6 +279,9 @@ export interface PublicProduct {
 
 export interface PublicPage {
   creator: Pick<Creator, "slug" | "displayName" | "bio">;
+  // Public branding image URLs, keyed by slot. A slot the creator has not
+  // uploaded is absent rather than empty, so the page renders a placeholder.
+  branding: Partial<Record<"avatar" | "cover", string>>;
   page: { title: string; theme: PageTheme; publishedAt: Date | null };
   links: Pick<Link, "id" | "title" | "url" | "description" | "icon">[];
   // Only published products are exposed; drafts and archived items never leak.
@@ -286,6 +303,7 @@ export async function getPublicPage(services: BiovaServices, slug: string): Prom
   const links = await services.links.list(creator.id);
   const products = await services.products.listPublished(creator.id);
   const blocks = await services.plugins.listPublicBlocks(creator.id, page.id);
+  const branding = await services.media.publicUrls(creator.slug, creator.id);
 
   // Stored theme may predate the current schema; ignore unknown keys rather than
   // failing the page, and only expose the values the renderer understands.
@@ -293,6 +311,7 @@ export async function getPublicPage(services: BiovaServices, slug: string): Prom
 
   return {
     creator: { slug: creator.slug, displayName: creator.displayName, bio: creator.bio },
+    branding,
     page: { title: page.title, theme: theme.success ? theme.data : {}, publishedAt: page.publishedAt },
     links: links
       .filter((link) => link.enabled)
