@@ -198,9 +198,15 @@ dashboard reads `GET /v1/analytics/summary?range=30d` (session-scoped) for page
 views, unique visitors, clicks, click-through rate, product views, and the paid
 order count and revenue for the range.
 
+`GET /v1/analytics/timeseries?range=` breaks the same metrics into UTC calendar
+days for the dashboard trend chart. Both endpoints accept `7d`, `30d` or `90d`
+and share one window definition (`seriesWindow` in `@biova/shared`), so the daily
+buckets always add up to the summary totals. A day with no events is a real zero,
+not a missing bucket. The dashboard's range control re-reads both together.
+
 Every number is derived from the raw event rows at read time; nothing is a stored
 counter, so a summary always agrees with the rows it comes from. See
-`docs/adr/0010-page-analytics.md`.
+`docs/adr/0010-page-analytics.md` and `docs/adr/0012-analytics-breakdown.md`.
 
 ## Plugin model
 

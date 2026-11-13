@@ -164,6 +164,7 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
         return rows.map(({ id, title }) => ({ id, title }));
       },
       paidOrders: (creatorId, since) => orders.paidTotalsSince(creatorId, since),
+      paidRevenueByDay: (creatorId, since) => orders.paidRevenueByDay(creatorId, since),
     },
   );
 

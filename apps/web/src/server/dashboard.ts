@@ -19,6 +19,7 @@ import {
   productDescriptionSchema,
   productPriceSchema,
   formatBytes,
+  analyticsRangeSchema,
   type AnalyticsRange,
   type AssetView,
   type PageTheme,
@@ -74,6 +75,15 @@ export interface AnalyticsView {
   products: { productId: string; title: string; views: number }[];
 }
 
+export interface AnalyticsDayView {
+  date: string;
+  pageViews: number;
+  linkClicks: number;
+  productViews: number;
+  orders: number;
+  revenueIdr: number;
+}
+
 export interface DashboardData {
   creator: {
     id: string;
@@ -86,6 +96,7 @@ export interface DashboardData {
   products: ProductView[];
   orders: OrderView[];
   analytics: AnalyticsView;
+  analyticsDays: AnalyticsDayView[];
 }
 
 // The dashboard loader: one round trip for creator, page and links.
@@ -100,7 +111,10 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
   const links = await services.links.list(creator.id);
   const products = await services.products.list(creator.id);
   const orders = await services.orders.listByCreator(creator.id);
-  const analytics = await services.analytics.summary(creator.id, "30d");
+  const [analytics, timeseries] = await Promise.all([
+    services.analytics.summary(creator.id, "30d"),
+    services.analytics.timeseries(creator.id, "30d"),
+  ]);
 
   return {
     creator: { id: creator.id, slug: creator.slug, displayName: creator.displayName, bio: creator.bio },
@@ -118,6 +132,7 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
       items: items.map((item) => ({ title: item.title, unitPriceIdr: item.unitPriceIdr })),
     })),
     analytics,
+    analyticsDays: timeseries.days,
   };
 });
 
@@ -128,6 +143,28 @@ export const getSession = createServerFn({ method: "GET" }).handler(async () => 
   const creator = await services.creators.getByUserId(userId);
   return { userId, hasCreator: creator !== undefined, slug: creator?.slug ?? null };
 });
+
+export interface AnalyticsDetail {
+  summary: AnalyticsView;
+  days: AnalyticsDayView[];
+}
+
+// The range control re-reads both the totals and the daily chart for the chosen
+// window in one call, so the numbers and the bars never describe two periods.
+export const getAnalytics = createServerFn({ method: "GET" })
+  .validator((range: unknown) => analyticsRangeSchema.parse(range ?? "30d"))
+  .handler(async ({ data: range }): Promise<AnalyticsDetail | null> => {
+    const userId = await sessionUserId();
+    if (!userId) return null;
+    const services = await getServices();
+    const creator = await services.creators.getByUserId(userId);
+    if (!creator) return null;
+    const [summary, timeseries] = await Promise.all([
+      services.analytics.summary(creator.id, range),
+      services.analytics.timeseries(creator.id, range),
+    ]);
+    return { summary, days: timeseries.days };
+  });
 
 // Service failures are returned as a small error code the UI can show; the
 // message never includes internals.

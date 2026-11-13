@@ -264,4 +264,31 @@ describe("order service", () => {
     expect(mine.length).toBeGreaterThan(0);
     expect(await service.listByCreator(other.value.id)).toEqual([]);
   });
+
+  test("paid revenue is grouped by UTC day and scoped to the creator", async () => {
+    const paid = await service.checkout({
+      creatorSlug: "seller",
+      productSlug: "ebook",
+      buyerName: "Daily",
+      buyerEmail: "daily@example.com",
+    });
+    if (!paid.ok) throw new Error("setup failed");
+    await service.handleWebhook(notification({ order_id: paid.value.order.reference, transaction_id: "tx-daily" }));
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const days = await service.paidRevenueByDay(creatorId, since);
+    const today = new Date().toISOString().slice(0, 10);
+    const bucket = days.find((day) => day.date === today);
+
+    // Several orders were paid above; this asserts the grouping runs and the
+    // day is present, while the exact counts stay covered by the totals test.
+    expect(bucket?.revenueIdr).toBeGreaterThanOrEqual(75_000);
+    expect(days.every((day) => /^\d{4}-\d{2}-\d{2}$/.test(day.date))).toBe(true);
+
+    const otherUser = await createTestUser(context.db);
+    const creators = createCreatorService(createCreatorRepository(context.db));
+    const other = await creators.getOrCreate({ userId: otherUser.id, slug: "revenue-other", displayName: "Other" });
+    if (!other.ok) throw new Error("setup failed");
+    expect(await service.paidRevenueByDay(other.value.id, since)).toEqual([]);
+  });
 });

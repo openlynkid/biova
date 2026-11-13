@@ -402,6 +402,38 @@ describe("biova api", () => {
     expect(summary).toMatchObject({ pageViews: 0, linkClicks: 0, revenueIdr: 0 });
   });
 
+  test("analytics timeseries splits the same metrics into calendar days", async () => {
+    expect((await request("/v1/analytics/timeseries")).status).toBe(401);
+    expect((await request("/v1/analytics/timeseries?range=all", {}, aliceId)).status).toBe(422);
+
+    const response = await request("/v1/analytics/timeseries?range=7d", {}, aliceId);
+    expect(response.status).toBe(200);
+    const { timeseries } = (await response.json()) as {
+      timeseries: { range: string; days: { date: string; pageViews: number; linkClicks: number; productViews: number; orders: number; revenueIdr: number }[] };
+    };
+    expect(timeseries.range).toBe("7d");
+    expect(timeseries.days).toHaveLength(7);
+
+    // The chart is a breakdown of the same period as the summary, so the daily
+    // buckets must add up to the totals rather than to a different set of events.
+    const summary = await request("/v1/analytics/summary?range=7d", {}, aliceId);
+    const { summary: metrics } = (await summary.json()) as {
+      summary: { pageViews: number; linkClicks: number; productViews: number; orders: number; revenueIdr: number };
+    };
+    const total = (key: "pageViews" | "linkClicks" | "productViews" | "orders" | "revenueIdr") =>
+      timeseries.days.reduce((sum, day) => sum + day[key], 0);
+    expect(total("pageViews")).toBe(metrics.pageViews);
+    expect(total("linkClicks")).toBe(metrics.linkClicks);
+    expect(total("productViews")).toBe(metrics.productViews);
+    expect(total("orders")).toBe(metrics.orders);
+    expect(total("revenueIdr")).toBe(metrics.revenueIdr);
+
+    // Bob's chart is empty, not a window onto Alice's days.
+    const bob = await request("/v1/analytics/timeseries?range=7d", {}, bobId);
+    const { timeseries: bobSeries } = (await bob.json()) as { timeseries: { days: { pageViews: number }[] } };
+    expect(bobSeries.days.every((day) => day.pageViews === 0)).toBe(true);
+  });
+
   test("unknown errors do not leak internals", async () => {
     const originalError = console.error;
     console.error = () => {};

@@ -65,6 +65,17 @@
 .stat{border:1px solid #292b34;border-radius:10px;background:#111318;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
 .stat-label{font-size:10px;letter-spacing:1.4px;color:#8f929e}
 .stat strong{font-size:20px;font-weight:720;letter-spacing:-.6px}
+/* Analytics range control and daily trend */
+.range-control{display:inline-flex;gap:4px;margin-left:auto;border:1px solid #292b34;border-radius:8px;padding:3px;background:#111318}
+.range-control button{border:0;background:transparent;color:#9b9eaa;font:inherit;font-size:11px;font-weight:640;letter-spacing:.4px;padding:5px 11px;border-radius:6px;cursor:pointer}
+.range-control button.active{background:#202638;color:#f4f4f5}
+.trend{display:flex;align-items:flex-end;gap:3px;height:88px;margin:20px 0 6px;max-width:760px;padding:0 1px}
+.trend-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:2px}
+.trend-bar{background:#3a4463;border-radius:3px 3px 0 0;min-height:2px}
+.trend-bar.primary{background:#8298ff}
+.trend-axis{display:flex;justify-content:space-between;font-size:10px;letter-spacing:1px;color:#777b88;max-width:760px;margin-bottom:6px}
+.trend-legend{display:flex;gap:16px;font-size:11px;color:#8f929e;max-width:760px;margin-bottom:4px}
+.trend-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
 .access-panel{margin-top:20px;padding:18px;border:1px solid #2b3a33;border-radius:11px;background:#0f1713;max-width:520px}
 .access-panel strong{display:block;font-size:14px;margin-bottom:6px}
 

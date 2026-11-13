@@ -1,16 +1,24 @@
-import { and, count, countDistinct, eq, gte } from "drizzle-orm";
+import { and, count, countDistinct, eq, gte, sql, type AnyColumn } from "drizzle-orm";
 import { linkClickEvents, pageViewEvents, productViewEvents } from "@biova/database/schema";
 import type { Database } from "@biova/database/types";
 import {
-  ANALYTICS_RANGE_DAYS,
+  buildDailySeries,
   clickThroughRate,
+  seriesWindow,
   trackEventSchema,
   type AnalyticsRange,
   type AnalyticsSummary,
+  type AnalyticsTimeseries,
+  type DailyCount,
+  type DailyRevenue,
   type Result,
   ok,
   fail,
 } from "@biova/shared";
+
+// Every event table is bucketed by the same expression, so the three daily
+// series line up on the same calendar days.
+const utcDay = (column: AnyColumn) => sql<string>`to_char(${column} at time zone 'UTC', 'YYYY-MM-DD')`;
 
 export type PageViewEvent = typeof pageViewEvents.$inferSelect;
 export type LinkClickEvent = typeof linkClickEvents.$inferSelect;
@@ -38,6 +46,9 @@ export interface AnalyticsRepository {
   countUniqueVisitors(creatorId: string, since: Date): Promise<number>;
   countLinkClicks(creatorId: string, since: Date): Promise<number>;
   countProductViews(creatorId: string, since: Date): Promise<number>;
+  pageViewsByDay(creatorId: string, since: Date): Promise<DailyCount[]>;
+  linkClicksByDay(creatorId: string, since: Date): Promise<DailyCount[]>;
+  productViewsByDay(creatorId: string, since: Date): Promise<DailyCount[]>;
   linkClicksByLink(creatorId: string, since: Date): Promise<LinkClicks[]>;
   productViewsByProduct(creatorId: string, since: Date): Promise<ProductViews[]>;
 }
@@ -83,6 +94,28 @@ export function createAnalyticsRepository(db: Database): AnalyticsRepository {
       return row?.value ?? 0;
     },
 
+    pageViewsByDay(creatorId, since) {
+      return db
+        .select({ date: utcDay(pageViewEvents.createdAt), count: count() })
+        .from(pageViewEvents)
+        .where(and(eq(pageViewEvents.creatorId, creatorId), gte(pageViewEvents.createdAt, since)))
+        .groupBy(sql`1`);
+    },
+    linkClicksByDay(creatorId, since) {
+      return db
+        .select({ date: utcDay(linkClickEvents.createdAt), count: count() })
+        .from(linkClickEvents)
+        .where(and(eq(linkClickEvents.creatorId, creatorId), gte(linkClickEvents.createdAt, since)))
+        .groupBy(sql`1`);
+    },
+    productViewsByDay(creatorId, since) {
+      return db
+        .select({ date: utcDay(productViewEvents.createdAt), count: count() })
+        .from(productViewEvents)
+        .where(and(eq(productViewEvents.creatorId, creatorId), gte(productViewEvents.createdAt, since)))
+        .groupBy(sql`1`);
+    },
+
     linkClicksByLink(creatorId, since) {
       return db
         .select({ linkId: linkClickEvents.linkId, clicks: count() })
@@ -106,6 +139,7 @@ export interface AnalyticsDeps {
   listLinks(creatorId: string): Promise<{ id: string; title: string }[]>;
   listProducts(creatorId: string): Promise<{ id: string; title: string }[]>;
   paidOrders(creatorId: string, since: Date): Promise<{ count: number; revenueIdr: number }>;
+  paidRevenueByDay(creatorId: string, since: Date): Promise<DailyRevenue[]>;
 }
 
 export interface AnalyticsService {
@@ -118,6 +152,7 @@ export interface AnalyticsService {
     productId?: string;
   }): Promise<Result<{ recorded: true }, AnalyticsError>>;
   summary(creatorId: string, range: AnalyticsRange): Promise<AnalyticsSummary>;
+  timeseries(creatorId: string, range: AnalyticsRange): Promise<AnalyticsTimeseries>;
 }
 
 export function createAnalyticsService(
@@ -127,8 +162,12 @@ export function createAnalyticsService(
 ): AnalyticsService {
   const now = options.now ?? Date.now;
 
-  function since(range: AnalyticsRange): Date {
-    return new Date(now() - ANALYTICS_RANGE_DAYS[range] * 24 * 60 * 60 * 1000);
+  // The summary and the daily chart share one window definition: the last N
+  // calendar days in UTC, ending today. Deriving both from `seriesWindow` means
+  // the daily buckets always add up to the summary totals, instead of the chart
+  // describing a slightly wider span than the numbers above it.
+  function windowFor(range: AnalyticsRange): { since: Date; days: string[] } {
+    return seriesWindow(range, new Date(now()));
   }
 
   return {
@@ -170,7 +209,7 @@ export function createAnalyticsService(
     },
 
     async summary(creatorId, range) {
-      const from = since(range);
+      const { since: from } = windowFor(range);
       const [pageViews, uniqueVisitors, linkClicks, productViews, clicksByLink, viewsByProduct, orders, links, products] =
         await Promise.all([
           repository.countPageViews(creatorId, from),
@@ -199,6 +238,17 @@ export function createAnalyticsService(
         links: links.map((link) => ({ linkId: link.id, title: link.title, clicks: clicks.get(link.id) ?? 0 })),
         products: products.map((product) => ({ productId: product.id, title: product.title, views: views.get(product.id) ?? 0 })),
       };
+    },
+
+    async timeseries(creatorId, range) {
+      const { since: from, days } = windowFor(range);
+      const [pageViews, linkClicks, productViews, orders] = await Promise.all([
+        repository.pageViewsByDay(creatorId, from),
+        repository.linkClicksByDay(creatorId, from),
+        repository.productViewsByDay(creatorId, from),
+        deps.paidRevenueByDay(creatorId, from),
+      ]);
+      return buildDailySeries({ range, days, pageViews, linkClicks, productViews, orders });
     },
   };
 }

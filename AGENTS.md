@@ -25,9 +25,10 @@ shape day-to-day decisions:
   (auth foundation, database schema). Phase 2 complete: creator, page and links
   domains, the public page route and the creator dashboard are implemented.
   Phase 3 complete: products, checkout, Midtrans, asset storage and delivery are
-  implemented. Phase 4 in progress: page analytics (events, summary, dashboard
-  panel) and public-page SEO (canonical/OG metadata, JSON-LD structured data,
-  sitemap.xml, robots.txt) are implemented; more growth features are next.
+  implemented. Phase 4 in progress: page analytics (events, summary, daily
+  timeseries, dashboard panel with a 7d/30d/90d range control) and public-page
+  SEO (canonical/OG metadata, JSON-LD structured data, sitemap.xml, robots.txt)
+  are implemented; more growth features are next.
 - Domain boundaries to build next: growth and media. Each domain owns its tables,
   repositories and service APIs, and exposes a public interface (ADR-0002,
   ADR-0004). Creator, page, links, products, orders, payments, delivery and
@@ -167,7 +168,11 @@ a build step that requires `DATABASE_URL`.
   `link_click_events` and `product_view_events` (raw, append-only). Every number
   in the dashboard summary is computed on read from those rows; links, product
   titles and paid-order totals arrive through injected functions, so it imports
-  no other domain.
+  no other domain. `summary` and `timeseries` share one window definition
+  (`seriesWindow` in `@biova/shared`: the last N UTC calendar days ending today),
+  so the daily buckets always sum to the summary totals. Days are bucketed in SQL
+  (`to_char(created_at at time zone 'UTC', ...)`) and gaps are filled by the pure
+  `buildDailySeries`.
 - `packages/payments`: `PaymentProvider` abstraction with a Midtrans adapter
   (sha512 signature verification) and a fake provider for tests and local
   development. `core` picks the provider from the environment.

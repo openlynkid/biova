@@ -13,6 +13,7 @@ import {
   canTransitionOrder,
   isPaymentFailed,
   isPaymentPaid,
+  type DailyRevenue,
   type OrderStatus,
   type PaymentStatus,
   type Result,
@@ -64,6 +65,8 @@ export interface OrderRepository {
   // Paid orders since a date, for the analytics revenue read. Counts only
   // orders that are actually paid, so a refunded order drops out.
   paidTotalsSince(creatorId: string, since: Date): Promise<{ count: number; revenueIdr: number }>;
+  // The same totals split by UTC calendar day, for the analytics trend chart.
+  paidRevenueByDay(creatorId: string, since: Date): Promise<DailyRevenue[]>;
   recordWebhookEvent(args: { provider: string; eventId: string; eventType: string; payload: Record<string, unknown> }): Promise<boolean>;
   upsertPaymentTransaction(args: {
     orderId: string;
@@ -146,6 +149,15 @@ export function createOrderRepository(db: Database): OrderRepository {
         .from(orders)
         .where(and(eq(orders.creatorId, creatorId), eq(orders.status, "paid"), gte(orders.createdAt, since)));
       return { count: row?.count ?? 0, revenueIdr: row?.revenueIdr ?? 0 };
+    },
+
+    paidRevenueByDay(creatorId, since) {
+      const day = sql<string>`to_char(${orders.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+      return db
+        .select({ date: day, count: sql<number>`count(*)::int`, revenueIdr: sql<number>`coalesce(sum(${orders.totalIdr}), 0)::int` })
+        .from(orders)
+        .where(and(eq(orders.creatorId, creatorId), eq(orders.status, "paid"), gte(orders.createdAt, since)))
+        .groupBy(sql`1`);
     },
 
     async recordWebhookEvent(args) {
@@ -249,6 +261,8 @@ export interface OrderService {
   // Paid totals since a date, read by the analytics domain through an injected
   // function so analytics never imports orders.
   paidTotalsSince(creatorId: string, since: Date): Promise<{ count: number; revenueIdr: number }>;
+  // The same totals split by UTC calendar day, for the analytics trend chart.
+  paidRevenueByDay(creatorId: string, since: Date): Promise<DailyRevenue[]>;
   listEntitlementsByEmail(email: string): Promise<ProductEntitlement[]>;
   // Verifies and applies a provider webhook. The provider is trusted to have
   // validated its own signature; everything else (amount, currency, order state)
@@ -342,6 +356,10 @@ export function createOrderService(repository: OrderRepository, deps: OrderDeps,
 
     paidTotalsSince(creatorId, since) {
       return repository.paidTotalsSince(creatorId, since);
+    },
+
+    paidRevenueByDay(creatorId, since) {
+      return repository.paidRevenueByDay(creatorId, since);
     },
 
     async handleWebhook(payload) {

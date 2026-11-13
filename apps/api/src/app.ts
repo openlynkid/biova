@@ -575,6 +575,20 @@ export function createApp(deps: AppDeps) {
       return { summary };
     })
 
+    // The same metrics split by UTC calendar day, for the dashboard trend chart.
+    .get("/v1/analytics/timeseries", async ({ request, query, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const range = analyticsRangeSchema.safeParse((query as { range?: unknown }).range ?? "30d");
+      if (!range.success) return errorResponse(set, "invalid_input");
+      const timeseries = await auth.services.analytics.timeseries(auth.creator.id, range.data);
+      return { timeseries };
+    })
+
     // Public read model. No session required; only published pages are returned.
     .get("/v1/public/:slug", async ({ params, set }) => {
       const services = await deps.getServices();

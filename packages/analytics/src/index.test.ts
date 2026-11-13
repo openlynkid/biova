@@ -4,6 +4,7 @@ import { createCreatorRepository, createCreatorService } from "@biova/creator";
 import { createLinkRepository, createLinkService, type LinkService } from "@biova/links";
 import { createProductRepository, createProductService, type ProductService } from "@biova/products";
 import { createAnalyticsRepository, createAnalyticsService, type AnalyticsService } from "./index";
+import { utcDayKey } from "@biova/shared";
 
 let context: TestDatabase;
 let service: AnalyticsService;
@@ -40,6 +41,8 @@ beforeAll(async () => {
     listProducts: async (id) => (id === creatorId ? [{ id: productId, title: "Preset" }] : []),
     // One paid order worth 25,000 IDR, mirroring what the orders domain reports.
     paidOrders: async (id) => (id === creatorId ? { count: 1, revenueIdr: 25000 } : { count: 0, revenueIdr: 0 }),
+    paidRevenueByDay: async (id) =>
+      id === creatorId ? [{ date: utcDayKey(new Date()), count: 1, revenueIdr: 25000 }] : [],
   });
 });
 
@@ -108,6 +111,7 @@ describe("analytics service", () => {
       listLinks: async () => [{ id: linkId, title: "My site" }],
       listProducts: async () => [{ id: productId, title: "Preset" }],
       paidOrders: async () => ({ count: 0, revenueIdr: 0 }),
+      paidRevenueByDay: async () => [],
     }, { now: () => Date.now() + 100 * 24 * 60 * 60 * 1000 });
     const summary = await future.summary(creatorId, "7d");
     expect(summary.pageViews).toBe(0);
@@ -119,9 +123,25 @@ describe("analytics service", () => {
       listLinks: async () => [],
       listProducts: async () => [],
       paidOrders: async () => ({ count: 0, revenueIdr: 0 }),
+      paidRevenueByDay: async () => [],
     }, { now: () => Date.now() + 200 * 24 * 60 * 60 * 1000 });
     const summary = await empty.summary(creatorId, "7d");
     expect(summary.pageViews).toBe(0);
     expect(summary.clickThroughRate).toBe(0);
+  });
+
+  test("breaks the metrics into a dense series of UTC days", async () => {
+    const timeseries = await service.timeseries(creatorId, "7d");
+    expect(timeseries.range).toBe("7d");
+    expect(timeseries.days).toHaveLength(7);
+
+    const today = timeseries.days.at(-1);
+    expect(today?.date).toBe(utcDayKey(new Date()));
+    // The events recorded above all happened today, so today's bucket holds the
+    // totals and every earlier day is a real zero rather than a missing entry.
+    expect(today).toMatchObject({ pageViews: 2, linkClicks: 1, productViews: 1, orders: 1, revenueIdr: 25000 });
+    for (const day of timeseries.days.slice(0, -1)) {
+      expect(day).toMatchObject({ pageViews: 0, linkClicks: 0, productViews: 0, orders: 0, revenueIdr: 0 });
+    }
   });
 });

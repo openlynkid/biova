@@ -8,6 +8,7 @@ import {
   deleteLink,
   deleteProduct,
   deleteProductAsset,
+  getAnalytics,
   getDashboard,
   getSession,
   listProductAssets,
@@ -20,9 +21,11 @@ import {
   updateProduct,
   updateProfile,
   uploadProductAsset,
+  type AnalyticsDetail,
 } from "../server/dashboard";
 import { formatPriceIdr } from "@biova/shared/product";
 import { formatBytes, type AssetView } from "@biova/shared/asset";
+import type { AnalyticsRange } from "@biova/shared";
 
 export const Route = createFileRoute("/dashboard")({
   loader: async () => ({
@@ -143,15 +146,25 @@ function Onboarding() {
 
 function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeof getDashboard>>>; email: string }) {
   const router = useRouter();
-  const { creator, page, links, products, orders, analytics } = data;
+  const { creator, page, links, products, orders, analytics, analyticsDays } = data;
   const published = page?.status === "published";
   const [error, setError] = useState<string | null>(null);
+  // The range control re-reads summary and daily chart together. The loader
+  // payload seeds the initial 30d view, so there is no extra fetch on load.
+  const [detail, setDetail] = useState<AnalyticsDetail>({ summary: analytics, days: analyticsDays });
+  const [range, setRange] = useState<AnalyticsRange>(analytics.range);
 
   async function run(action: () => Promise<{ ok: boolean; error?: string }>) {
     setError(null);
     const result = await action();
     if (!result.ok) setError(result.error ?? "Something went wrong");
     await router.invalidate();
+  }
+
+  async function selectRange(next: AnalyticsRange) {
+    setRange(next);
+    const result = await getAnalytics({ data: next });
+    if (result) setDetail({ summary: result.summary, days: result.days });
   }
 
   return (
@@ -175,7 +188,7 @@ function Dashboard({ data, email }: { data: NonNullable<Awaited<ReturnType<typeo
       </section>
 
       <ProfileForm creator={creator} onSave={(payload) => run(async () => updateProfile({ data: payload }))} />
-      <AnalyticsPanel analytics={analytics} />
+      <AnalyticsPanel analytics={detail.summary} days={detail.days} range={range} onRangeChange={selectRange} />
       <PageForm page={page} onSave={(payload) => run(async () => updatePage({ data: payload }))} />
       <LinksEditor links={links} onError={setError} />
       <ProductsEditor products={products} onError={setError} />
@@ -401,28 +414,104 @@ type AnalyticsRow = {
   linkClicks: number;
   clickThroughRate: number;
   productViews: number;
+  orders: number;
+  revenueIdr: number;
   links: { linkId: string; title: string; clicks: number }[];
   products: { productId: string; title: string; views: number }[];
 };
 
-const RANGE_LABELS: Record<string, string> = { "7d": "7 days", "30d": "30 days", "90d": "90 days" };
+type AnalyticsDay = {
+  date: string;
+  pageViews: number;
+  linkClicks: number;
+  productViews: number;
+  orders: number;
+  revenueIdr: number;
+};
 
-function AnalyticsPanel({ analytics }: { analytics: AnalyticsRow }) {
-  const rangeLabel = RANGE_LABELS[analytics.range] ?? analytics.range;
+const RANGE_LABELS: Record<string, string> = { "7d": "7 days", "30d": "30 days", "90d": "90 days" };
+const RANGE_OPTIONS: AnalyticsRange[] = ["7d", "30d", "90d"];
+
+// "2026-11-13" -> "13 Nov", for the axis ends only, so the bars stay readable at
+// 90 days where a label per bar would not fit.
+function shortDay(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const label = new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  return label;
+}
+
+function AnalyticsPanel({
+  analytics,
+  days,
+  range,
+  onRangeChange,
+}: {
+  analytics: AnalyticsRow;
+  days: AnalyticsDay[];
+  range: AnalyticsRange;
+  onRangeChange: (range: AnalyticsRange) => void;
+}) {
+  const rangeLabel = RANGE_LABELS[range] ?? range;
   // Only rows with activity are shown, busiest first.
   const topLinks = [...analytics.links].filter((link) => link.clicks > 0).sort((a, b) => b.clicks - a.clicks);
   const topProducts = [...analytics.products].filter((product) => product.views > 0).sort((a, b) => b.views - a.views);
+  // Both series share one scale, so a click bar can never overtop a view bar of
+  // the same height.
+  const peak = Math.max(1, ...days.map((day) => Math.max(day.pageViews, day.linkClicks)));
 
   return (
     <section className="panel">
-      <div className="eyebrow">ANALYTICS ({rangeLabel.toUpperCase()})</div>
+      <div className="section-heading">
+        <div className="eyebrow">ANALYTICS ({rangeLabel.toUpperCase()})</div>
+        <div className="range-control" role="group" aria-label="Analytics range">
+          {RANGE_OPTIONS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={option === range ? "active" : undefined}
+              aria-pressed={option === range}
+              onClick={() => onRangeChange(option)}
+            >
+              {RANGE_LABELS[option]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="stat-row">
         <div className="stat"><span className="stat-label">PAGE VIEWS</span><strong>{analytics.pageViews}</strong></div>
         <div className="stat"><span className="stat-label">VISITORS</span><strong>{analytics.uniqueVisitors}</strong></div>
         <div className="stat"><span className="stat-label">LINK CLICKS</span><strong>{analytics.linkClicks}</strong></div>
         <div className="stat"><span className="stat-label">CTR</span><strong>{analytics.clickThroughRate}%</strong></div>
         <div className="stat"><span className="stat-label">PRODUCT VIEWS</span><strong>{analytics.productViews}</strong></div>
+        <div className="stat"><span className="stat-label">ORDERS</span><strong>{analytics.orders}</strong></div>
+        <div className="stat"><span className="stat-label">REVENUE</span><strong>{formatPriceIdr(analytics.revenueIdr)}</strong></div>
       </div>
+
+      {days.length > 0 ? (
+        <>
+          <div className="trend-legend">
+            <span><i style={{ background: "#8298ff" }} />Page views</span>
+            <span><i style={{ background: "#3a4463" }} />Link clicks</span>
+          </div>
+          <div className="trend" role="img" aria-label={`Daily page views and link clicks over the last ${rangeLabel}`}>
+            {days.map((day) => (
+              <div
+                className="trend-col"
+                key={day.date}
+                title={`${shortDay(day.date)} · ${day.pageViews} views · ${day.linkClicks} clicks`}
+              >
+                <span className="trend-bar primary" style={{ height: `${(day.pageViews / peak) * 100}%` }} />
+                <span className="trend-bar" style={{ height: `${(day.linkClicks / peak) * 100}%` }} />
+              </div>
+            ))}
+          </div>
+          <div className="trend-axis">
+            <span>{shortDay(days[0].date)}</span>
+            <span>{shortDay(days[days.length - 1].date)}</span>
+          </div>
+        </>
+      ) : null}
 
       {topLinks.length > 0 ? (
         <>

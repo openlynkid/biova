@@ -75,3 +75,83 @@ export function clickThroughRate(linkClicks: number, pageViews: number): number 
   if (pageViews <= 0) return 0;
   return Math.round((linkClicks / pageViews) * 1000) / 10;
 }
+
+// A daily bucket. The date is a UTC calendar day (YYYY-MM-DD); events are
+// bucketed by UTC day on both the write and the read side, so a bucket never
+// straddles midnight for one reader and not another.
+export interface AnalyticsDayPoint {
+  date: string;
+  pageViews: number;
+  linkClicks: number;
+  productViews: number;
+  orders: number;
+  revenueIdr: number;
+}
+
+// The per-day breakdown behind the dashboard trend chart. `days` is dense: a
+// calendar day with no events is present with zeroes, so the chart has no gaps.
+export interface AnalyticsTimeseries {
+  range: AnalyticsRange;
+  days: AnalyticsDayPoint[];
+}
+
+export interface DailyCount {
+  date: string;
+  count: number;
+}
+
+export interface DailyRevenue {
+  date: string;
+  count: number;
+  revenueIdr: number;
+}
+
+export function utcDayKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+// The calendar days a range covers, oldest first, ending on the current UTC day.
+// A range of N days is N buckets including today, so "7d" is today plus the six
+// days before it rather than a rolling 168-hour window: a chart of calendar days
+// should align to midnight, not to the moment the page was loaded.
+export function seriesWindow(range: AnalyticsRange, now: Date): { since: Date; days: string[] } {
+  const span = ANALYTICS_RANGE_DAYS[range];
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const days: string[] = [];
+  for (let offset = span - 1; offset >= 0; offset -= 1) {
+    days.push(utcDayKey(new Date(todayUtc - offset * 86_400_000)));
+  }
+  return { since: new Date(`${days[0]}T00:00:00.000Z`), days };
+}
+
+// Merges the per-day rows from each event table into one dense series. Kept pure
+// and clock-free so the gap-filling and the "unknown day is zero" rule are
+// covered by a unit test rather than by a live database.
+export function buildDailySeries(input: {
+  range: AnalyticsRange;
+  days: string[];
+  pageViews: DailyCount[];
+  linkClicks: DailyCount[];
+  productViews: DailyCount[];
+  orders: DailyRevenue[];
+}): AnalyticsTimeseries {
+  const pageViews = new Map(input.pageViews.map((row) => [row.date, row.count]));
+  const linkClicks = new Map(input.linkClicks.map((row) => [row.date, row.count]));
+  const productViews = new Map(input.productViews.map((row) => [row.date, row.count]));
+  const orders = new Map(input.orders.map((row) => [row.date, row]));
+
+  return {
+    range: input.range,
+    days: input.days.map((date) => {
+      const paid = orders.get(date);
+      return {
+        date,
+        pageViews: pageViews.get(date) ?? 0,
+        linkClicks: linkClicks.get(date) ?? 0,
+        productViews: productViews.get(date) ?? 0,
+        orders: paid?.count ?? 0,
+        revenueIdr: paid?.revenueIdr ?? 0,
+      };
+    }),
+  };
+}
