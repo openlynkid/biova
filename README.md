@@ -62,7 +62,7 @@ reaches the database. See `docs/adr/0006-creator-dashboard.md`.
 - `apps/api`: Elysia HTTP adapter only. `src/app.ts` builds the injectable app;
   `src/index.ts` wires real dependencies. Keep business rules in packages, not route handlers.
 - `packages/core`: composition root that builds the domain services and exposes the public read model.
-- `packages/creator`, `packages/page`, `packages/links`, `packages/products`, `packages/orders`: domain packages (repository + service). Product assets (upload, list, remove, reorder) live in `packages/products` as a second repository and service.
+- `packages/creator`, `packages/page`, `packages/links`, `packages/products`, `packages/orders`: domain packages (repository + service). Product assets (upload, list, remove, reorder) and the product thumbnail live in `packages/products` as separate repositories and services.
 - `packages/media`: creator branding (avatar and cover). It stores one row per slot and serves public, cache-busting image URLs, reusing the `BlobStorage` port.
 - `packages/payments`: payment provider abstraction with a Midtrans adapter and a fake provider for tests and local development.
 - `packages/storage`: `BlobStorage` port plus a local filesystem driver. Keys are server-generated, so no caller chooses a path.
@@ -105,6 +105,8 @@ never read from the request.
 | GET | `/v1/products/:id/assets` | yes | List a product's files |
 | DELETE | `/v1/products/assets/:assetId` | yes | Remove a file and its bytes |
 | PUT | `/v1/products/:id/assets/reorder` | yes | Set the file order |
+| PUT | `/v1/products/:id/thumbnail` | yes | Upload or replace the product thumbnail (multipart `file`) |
+| DELETE | `/v1/products/:id/thumbnail` | yes | Remove the product thumbnail and its bytes |
 | PUT | `/v1/media/:kind` | yes | Upload the avatar or cover (multipart `file`) |
 | DELETE | `/v1/media/:kind` | yes | Remove the avatar or cover and its bytes |
 | GET | `/v1/orders` | yes | List the creator's orders |
@@ -203,8 +205,8 @@ the asset belongs to the granted product; revoking an entitlement stops new
 downloads immediately. The storage key never appears in a URL or a response. See
 `docs/adr/0009-asset-storage-and-delivery.md`.
 
-Deleting a product, a creator or a branding image cascades the rows that
-reference a blob but leaves the uploaded bytes in the store. `bun run
+Deleting a product, a creator, a branding image or a thumbnail cascades the rows
+that reference a blob but leaves the uploaded bytes in the store. `bun run
 storage:sweep` reconciles the store against every row and lists what nothing
 references; add `--delete` to remove those files.
 
@@ -221,6 +223,19 @@ The images are public and appear on the published page at `/media/:username/:kin
 (rendered as the profile avatar and cover). The route serves them only while the
 page is published, so a draft page's branding never leaks, and the URL carries a
 version so a replacement busts the cache. See `docs/adr/0015-creator-media.md`.
+
+## Product thumbnails
+
+A creator sets a single product image from the dashboard (`Image` on a product
+row). Uploads are multipart and the bytes are written under `STORAGE_DIR` with a
+server-generated key; only images up to 5 MB are accepted, the same rule as
+branding. Replacing the image swaps the key and removes the previous blob.
+
+The thumbnail is public and appears on the public product card and at checkout,
+served from `/media/:username/product/:id`. The route serves it only while both
+the page and the product are published, so a draft product's image never leaks,
+and the URL carries a version so a replacement busts the cache. See
+`docs/adr/0016-product-thumbnails.md`.
 
 ## Analytics
 

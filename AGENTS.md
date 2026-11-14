@@ -31,9 +31,9 @@ shape day-to-day decisions:
   metadata, JSON-LD structured data, sitemap.xml, robots.txt), paid-order
   notifications (buyer receipt and creator sale alert through a deduped outbox)
   and conversion improvements (per-product conversion, an explicit buy action on
-  the product card) are implemented. Phase 5 complete: the hybrid plugin system
-  (catalog, install/enable, per-plugin permissions, settings, page blocks) is
-  implemented.
+  the product card, a public product thumbnail) are implemented. Phase 5
+  complete: the hybrid plugin system (catalog, install/enable, per-plugin
+  permissions, settings, page blocks) is implemented.
 - Domain boundaries built so far: creator, page, links, products, orders,
   payments, delivery, analytics, notifications, media and the plugin system.
   Each domain owns its tables, repositories and service APIs, and exposes a
@@ -102,10 +102,10 @@ Schema constraints worth knowing:
   `kind` is `avatar` or `cover`; replacing an image updates the same row and
   swaps `storage_key`. `storage_key` is unique and server-generated and is never
   exposed through the API. It cascades from `creators`.
-- Deleting a product, a creator or a media slot cascades the rows that reference
-  a blob but not the stored bytes. Those become unreachable orphans;
-  `bun run storage:sweep` reports them and `--delete` removes them. This is a
-  manual command, not an automatic job.
+- Deleting a product, a creator, a media slot or a thumbnail cascades the rows
+  that reference a blob but not the stored bytes. Those become unreachable
+  orphans; `bun run storage:sweep` reports them and `--delete` removes them. This
+  is a manual command, not an automatic job.
 
 ## Environment
 
@@ -139,7 +139,7 @@ bun run build                   # turbo build (web is the only builder)
 bun run db:generate             # drizzle-kit generate -> packages/database/drizzle
 bun run db:migrate              # apply migrations + assert auth tables exist
 bun run db:seed                 # dev demo data (creator "demo", published page)
-bun run storage:sweep           # report uploaded files no product row references
+bun run storage:sweep           # report uploaded files no row references
 bun run storage:sweep --delete  # remove those files
 ```
 

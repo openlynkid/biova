@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-// Creator branding images: a profile avatar and a page cover. Kept apart from
-// product assets: these are public (they appear on the public page), so the read
-// model is a URL, never a storage key.
+// Public images: creator branding (avatar, cover) and the product thumbnail.
+// Kept apart from product assets: these are public (they appear on the public
+// page), so the read model is a URL, never a storage key.
 export const mediaKindSchema = z.enum(["avatar", "cover"]);
 export type MediaKind = z.infer<typeof mediaKindSchema>;
 
