@@ -73,6 +73,7 @@ function CheckoutPage() {
       </nav>
       <header className="profile">
         <div className="eyebrow">FROM @{product.creatorSlug}</div>
+        {product.thumbnailUrl ? <img className="checkout-thumb" src={product.thumbnailUrl} alt="" /> : null}
         <h1>{product.title}</h1>
         {product.description ? <p className="intro">{product.description}</p> : null}
       </header>

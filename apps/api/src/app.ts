@@ -412,6 +412,46 @@ export function createApp(deps: AppDeps) {
       if (!result.ok) return errorResponse(set, result.error);
       return { ids: result.value.ids };
     })
+
+    // Product thumbnail. One public image per product, uploaded as multipart and
+    // stored through the same BlobStorage port as assets. Replacing it swaps the
+    // blob and drops the old one; the read model is a versioned public URL.
+    .put("/v1/products/:id/thumbnail", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      let form: FormData;
+      try {
+        form = await request.formData();
+      } catch {
+        return errorResponse(set, "invalid_input");
+      }
+      const file = form.get("file");
+      if (!(file instanceof File)) return errorResponse(set, "invalid_input");
+
+      const result = await auth.services.thumbnails.upload({
+        creatorId: auth.creator.id,
+        productId: params.id,
+        contentType: file.type || "application/octet-stream",
+        data: new Uint8Array(await file.arrayBuffer()),
+      });
+      if (!result.ok) return errorResponse(set, result.error);
+      return { productId: result.value.productId };
+    })
+    .delete("/v1/products/:id/thumbnail", async ({ request, params, set }) => {
+      const auth = await requireCreatorId(request, set);
+      if (!auth) return { error: "unauthorized" };
+      if (!auth.creator) {
+        set.status = 404;
+        return { error: "not_found" };
+      }
+      const result = await auth.services.thumbnails.remove(auth.creator.id, params.id);
+      if (!result.ok) return errorResponse(set, result.error);
+      return { productId: result.value.productId };
+    })
     // Buyer delivery listing. The order reference is the bearer credential, and
     // the service returns nothing unless the order is paid and has entitlements.
     .get("/v1/orders/:reference/downloads", async ({ params, set }) => {

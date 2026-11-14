@@ -14,8 +14,11 @@ import {
   createAssetService,
   createProductRepository,
   createProductService,
+  createThumbnailRepository,
+  createThumbnailService,
   type AssetService,
   type ProductService,
+  type ThumbnailService,
 } from "@biova/products";
 import { createOrderRepository, createOrderService, type OrderService } from "@biova/orders";
 import { createFakeProvider, createMidtransProvider, type PaymentProvider } from "@biova/payments";
@@ -54,6 +57,7 @@ export interface BiovaServices {
   links: LinkService;
   products: ProductService;
   assets: AssetService;
+  thumbnails: ThumbnailService;
   orders: OrderService;
   delivery: DeliveryService;
   analytics: AnalyticsService;
@@ -142,6 +146,13 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
   const assets = createAssetService(assetRepository, storage, {
     isOwnedProduct: (creatorId, productId) => products.ownsProduct(creatorId, productId),
   });
+  // Product thumbnails are public images, like branding: same BlobStorage port,
+  // same image-only and size rules, but the read model is a versioned URL.
+  const thumbnails = createThumbnailService(
+    createThumbnailRepository(db),
+    storage,
+    Number(readEnv("MAX_MEDIA_BYTES") ?? MAX_MEDIA_BYTES),
+  );
 
   // Notifications reach the creator contact through an injected function, so the
   // domain never imports the creator domain. The service swallows its own send
@@ -242,7 +253,7 @@ export function createServices(db: Database, options: CreateServicesOptions = {}
     },
   );
 
-  return { creators, pages, links, products, assets, orders, delivery, analytics, notifications, plugins, media };
+  return { creators, pages, links, products, assets, thumbnails, orders, delivery, analytics, notifications, plugins, media };
 }
 
 // Resolves the creator behind a published public page. Analytics ingest needs
@@ -275,6 +286,9 @@ export interface PublicProduct {
   title: string;
   description: string | null;
   priceIdr: number;
+  // Versioned public image URL, or null when the product has no thumbnail. The
+  // storage key is never exposed; the URL is the only thing a visitor sees.
+  thumbnailUrl: string | null;
 }
 
 export interface PublicPage {
@@ -316,7 +330,14 @@ export async function getPublicPage(services: BiovaServices, slug: string): Prom
     links: links
       .filter((link) => link.enabled)
       .map(({ id, title, url, description, icon }) => ({ id, title, url, description, icon })),
-    products: products.map(({ id, slug, title, description, priceIdr }) => ({ id, slug, title, description, priceIdr })),
+    products: products.map(({ id, slug, title, description, priceIdr, thumbnailKey, updatedAt }) => ({
+      id,
+      slug,
+      title,
+      description,
+      priceIdr,
+      thumbnailUrl: thumbnailKey ? services.thumbnails.publicUrl(creator.slug, id, updatedAt) : null,
+    })),
     blocks,
   };
 }

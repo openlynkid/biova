@@ -46,6 +46,9 @@ export interface ProductRepository {
   setStatus(creatorId: string, productId: string, status: ProductStatus): Promise<Product | undefined>;
   isSlugAvailable(creatorId: string, slug: string, exceptProductId?: string): Promise<boolean>;
   ownsProduct(creatorId: string, productId: string): Promise<boolean>;
+  // A product the creator owns and has published. Used by the public serving
+  // route, which must not serve a draft product's thumbnail.
+  findPublished(creatorId: string, productId: string): Promise<Product | undefined>;
   reorder(creatorId: string, orderedIds: string[]): Promise<void>;
 }
 
@@ -140,6 +143,16 @@ export function createProductRepository(db: Database): ProductRepository {
         .limit(1);
       return row !== undefined;
     },
+    async findPublished(creatorId, productId) {
+      const [row] = await db
+        .select()
+        .from(products)
+        .where(
+          and(eq(products.creatorId, creatorId), eq(products.id, productId), eq(products.status, "published")),
+        )
+        .limit(1);
+      return row;
+    },
     async reorder(creatorId, orderedIds) {
       if (orderedIds.length === 0) return;
       // Single statement: order is derived from the array position, so a
@@ -163,6 +176,9 @@ export interface ProductService {
   listPublished(creatorId: string): Promise<Product[]>;
   hasPublishedProduct(creatorId: string): Promise<boolean>;
   ownsProduct(creatorId: string, productId: string): Promise<boolean>;
+  // A published product the creator owns, or undefined. The public serving route
+  // uses it so a draft product's thumbnail is never served.
+  findPublished(creatorId: string, productId: string): Promise<Product | undefined>;
   create(args: CreateProductArgs): Promise<Result<Product, ProductError>>;
   update(args: UpdateProductArgs): Promise<Result<Product, ProductError>>;
   remove(creatorId: string, productId: string): Promise<Result<{ id: string }, ProductError>>;
@@ -186,6 +202,10 @@ export function createProductService(repository: ProductRepository): ProductServ
 
     ownsProduct(creatorId, productId) {
       return repository.ownsProduct(creatorId, productId);
+    },
+
+    findPublished(creatorId, productId) {
+      return repository.findPublished(creatorId, productId);
     },
 
     async create(args) {
@@ -246,3 +266,4 @@ export function createProductService(repository: ProductRepository): ProductServ
 }
 
 export * from "./assets";
+export * from "./thumbnail";

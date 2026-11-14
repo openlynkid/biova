@@ -92,6 +92,12 @@ Schema constraints worth knowing:
   `products`.
 - `product_entitlements` has a unique `(order_id, product_id)` index, so a
   replayed webhook cannot grant a buyer the same product twice.
+- `products.thumbnail_key` / `products.thumbnail_content_type` hold the single
+  public product image. Like `product_assets.storage_key`, the key is
+  server-generated and never exposed through the API; the public read model is a
+  versioned URL (`productThumbnailUrl`). Replacing the image updates the same row
+  and swaps the key; the replaced blob is removed once the row points at the new
+  one.
 - `creator_media` holds one row per `(creator_id, kind)` (unique index), where
   `kind` is `avatar` or `cover`; replacing an image updates the same row and
   swaps `storage_key`. `storage_key` is unique and server-generated and is never
@@ -163,7 +169,9 @@ a build step that requires `DATABASE_URL`.
   service (rules, returning `Result`). Products own `products` (slug unique per
   creator, price in whole rupiah) and publish through the same transition table
   as pages; `packages/products/src/assets.ts` adds a second repository + service
-  for `product_assets` (upload, list, remove, reorder). Orders own `orders`,
+  for `product_assets` (upload, list, remove, reorder), and
+  `packages/products/src/thumbnail.ts` adds a third for the single public
+  thumbnail (`thumbnail_key` on `products`). Orders own `orders`,
   `order_items`, `payment_transactions`, `payment_webhook_events` and
   `product_entitlements`.
 - `packages/storage`: `BlobStorage` port (`put`/`get`/`remove`/`list`) plus a

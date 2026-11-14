@@ -10,6 +10,8 @@ export interface CheckoutProduct {
   title: string;
   description: string | null;
   priceIdr: number;
+  // Versioned public image URL, or null when the product has no thumbnail.
+  thumbnailUrl: string | null;
 }
 
 // Public product read for the checkout page. Only a published product on a
@@ -34,6 +36,7 @@ export const getCheckoutProduct = createServerFn({ method: "GET" })
       title: product.title,
       description: product.description,
       priceIdr: product.priceIdr,
+      thumbnailUrl: product.thumbnailKey ? services.thumbnails.publicUrl(creator.slug, product.id, product.updatedAt) : null,
     };
   });
 

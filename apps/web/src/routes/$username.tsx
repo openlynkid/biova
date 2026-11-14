@@ -122,6 +122,9 @@ function PublicPage() {
               params={{ username: creator.slug, productSlug: product.slug }}
               onClick={() => trackEvent({ slug: creator.slug, type: "product_view", productId: product.id })}
             >
+              {product.thumbnailUrl ? (
+                <img className="product-thumb" src={product.thumbnailUrl} alt="" loading="lazy" />
+              ) : null}
               <div className="product-body">
                 <strong>{product.title}</strong>
                 {product.description ? <small>{product.description}</small> : null}

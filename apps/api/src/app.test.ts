@@ -190,8 +190,8 @@ describe("biova api", () => {
     expect(published.status).toBe(200);
 
     const afterPublish = await request("/v1/public/alice");
-    expect(((await afterPublish.json()) as { products: { id: string; slug: string; title: string; description: string | null; priceIdr: number }[] }).products).toEqual([
-      { id: product.id, slug: "ebook", title: "E-book", description: null, priceIdr: 49_000 },
+    expect(((await afterPublish.json()) as { products: { id: string; slug: string; title: string; description: string | null; priceIdr: number; thumbnailUrl: string | null }[] }).products).toEqual([
+      { id: product.id, slug: "ebook", title: "E-book", description: null, priceIdr: 49_000, thumbnailUrl: null },
     ]);
   });
 
@@ -587,6 +587,64 @@ describe("biova api", () => {
   test("branding requires a session and only touches the caller's own slots", async () => {
     const anonymous = await app.handle(new Request("http://localhost/v1/media/avatar", { method: "DELETE" }));
     expect(anonymous.status).toBe(401);
+  });
+
+  test("a creator uploads a product thumbnail and it appears on the published public page", async () => {
+    // A fresh product so the test owns its lifecycle regardless of test order.
+    const created = await request(
+      "/v1/products",
+      { method: "POST", body: JSON.stringify({ title: "Thumbed", slug: "thumbed", priceIdr: 15_000 }) },
+      aliceId,
+    );
+    const { product } = (await created.json()) as { product: { id: string } };
+    await request(`/v1/products/${product.id}/status`, { method: "PUT", body: JSON.stringify({ status: "published" }) }, aliceId);
+
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array([137, 80, 78, 71])], "cover.png", { type: "image/png" }));
+    const uploaded = await app.handle(
+      new Request(`http://localhost/v1/products/${product.id}/thumbnail`, {
+        method: "PUT",
+        headers: { "x-test-user": aliceId },
+        body: form,
+      }),
+    );
+    expect(uploaded.status).toBe(200);
+    expect(await uploaded.json()).toEqual({ productId: product.id });
+
+    const page = await request("/v1/public/alice");
+    const { products } = (await page.json()) as { products: { slug: string; thumbnailUrl: string | null }[] };
+    const thumbed = products.find((item) => item.slug === "thumbed");
+    expect(thumbed?.thumbnailUrl).toMatch(new RegExp(`^/media/alice/product/${product.id}\\?v=\\d+$`));
+
+    // A non-image upload is refused with 415.
+    const zipForm = new FormData();
+    zipForm.set("file", new File([new Uint8Array([1, 2, 3])], "x.zip", { type: "application/zip" }));
+    const rejected = await app.handle(
+      new Request(`http://localhost/v1/products/${product.id}/thumbnail`, {
+        method: "PUT",
+        headers: { "x-test-user": aliceId },
+        body: zipForm,
+      }),
+    );
+    expect(rejected.status).toBe(415);
+    expect(await rejected.json()).toEqual({ error: "unsupported_type" });
+
+    // Removing clears the thumbnail.
+    const removed = await request(`/v1/products/${product.id}/thumbnail`, { method: "DELETE" }, aliceId);
+    expect(removed.status).toBe(200);
+    const after = await request("/v1/public/alice");
+    const afterProducts = ((await after.json()) as { products: { slug: string; thumbnailUrl: string | null }[] }).products;
+    expect(afterProducts.find((item) => item.slug === "thumbed")?.thumbnailUrl).toBeNull();
+  });
+
+  test("product thumbnails require a session and only touch the caller's own products", async () => {
+    const anonymous = await app.handle(new Request("http://localhost/v1/products/00000000-0000-0000-0000-000000000000/thumbnail", { method: "DELETE" }));
+    expect(anonymous.status).toBe(401);
+
+    // Bob cannot touch a product he does not own; it reads as not found.
+    const aliceProducts = (await (await request("/v1/products", {}, aliceId)).json()) as { products: { id: string }[] };
+    const removed = await request(`/v1/products/${aliceProducts.products[0].id}/thumbnail`, { method: "DELETE" }, bobId);
+    expect(removed.status).toBe(404);
   });
 
   test("unknown errors do not leak internals", async () => {

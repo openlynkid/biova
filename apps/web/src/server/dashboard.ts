@@ -24,6 +24,7 @@ import {
   pluginPermissionSchema,
   pluginSettingsSchema,
   mediaKindSchema,
+  productThumbnailUrl,
   type AnalyticsRange,
   type AssetView,
   type PageTheme,
@@ -56,6 +57,8 @@ export interface ProductView {
   description: string | null;
   priceIdr: number;
   status: string;
+  // Versioned public image URL, or null when the product has no thumbnail.
+  thumbnailUrl: string | null;
 }
 
 export interface OrderView {
@@ -159,7 +162,7 @@ export const getDashboard = createServerFn({ method: "GET" }).handler(async (): 
     creator: { id: creator.id, slug: creator.slug, displayName: creator.displayName, bio: creator.bio },
     page: { title: page.title, status: page.status, theme: pageThemeSchema.safeParse(page.theme).data ?? {} },
     links: links.map(({ id, title, url, description, icon, enabled }) => ({ id, title, url, description, icon, enabled })),
-    products: products.map(toProductView),
+    products: products.map((product) => toProductView(product, creator.slug)),
     orders: orders.map(({ order, items }) => ({
       reference: order.reference,
       status: order.status,
@@ -253,14 +256,19 @@ function toLinkView(link: { id: string; title: string; url: string; description:
   return { id: link.id, title: link.title, url: link.url, description: link.description, icon: link.icon, enabled: link.enabled };
 }
 
-function toProductView(product: {
-  id: string;
-  slug: string;
-  title: string;
-  description: string | null;
-  priceIdr: number;
-  status: string;
-}): ProductView {
+function toProductView(
+  product: {
+    id: string;
+    slug: string;
+    title: string;
+    description: string | null;
+    priceIdr: number;
+    status: string;
+    thumbnailKey: string | null;
+    updatedAt: Date;
+  },
+  creatorSlug: string,
+): ProductView {
   return {
     id: product.id,
     slug: product.slug,
@@ -268,11 +276,21 @@ function toProductView(product: {
     description: product.description,
     priceIdr: product.priceIdr,
     status: product.status,
+    thumbnailUrl: product.thumbnailKey ? productThumbnailUrl(creatorSlug, product.id, versionOf(product.updatedAt)) : null,
   };
 }
 
-function unwrapProduct(result: { ok: true; value: Parameters<typeof toProductView>[0] } | { ok: false; error: string }): ActionResult<ProductView> {
-  return result.ok ? { ok: true, data: toProductView(result.value) } : { ok: false, error: result.error };
+// The version is the row's `updatedAt` in epoch seconds, matching the public
+// read model so the dashboard and the public page use the same URL.
+function versionOf(updatedAt: Date): number {
+  return Math.floor(updatedAt.getTime() / 1000);
+}
+
+function unwrapProduct(
+  result: { ok: true; value: Parameters<typeof toProductView>[0] } | { ok: false; error: string },
+  creatorSlug: string,
+): ActionResult<ProductView> {
+  return result.ok ? { ok: true, data: toProductView(result.value, creatorSlug) } : { ok: false, error: result.error };
 }
 
 function unwrapLink(result: { ok: true; value: Parameters<typeof toLinkView>[0] } | { ok: false; error: string }): ActionResult<LinkView> {
@@ -394,7 +412,7 @@ export const createProduct = createServerFn({ method: "POST" })
     const { services, creator } = await requireCreator();
     if (!creator) return { ok: false as const, error: "not_found" };
     const result = await services.products.create({ creatorId: creator.id, ...data });
-    return unwrapProduct(result);
+    return unwrapProduct(result, creator.slug);
   });
 
 export const updateProduct = createServerFn({ method: "POST" })
@@ -416,7 +434,7 @@ export const updateProduct = createServerFn({ method: "POST" })
       description: data.description,
       priceIdr: data.priceIdr,
     });
-    return unwrapProduct(result);
+    return unwrapProduct(result, creator.slug);
   });
 
 export const setProductStatus = createServerFn({ method: "POST" })
@@ -425,7 +443,7 @@ export const setProductStatus = createServerFn({ method: "POST" })
     const { services, creator } = await requireCreator();
     if (!creator) return { ok: false as const, error: "not_found" };
     const result = await services.products.setStatus(creator.id, data.productId, data.status);
-    return unwrapProduct(result);
+    return unwrapProduct(result, creator.slug);
   });
 
 export const deleteProduct = createServerFn({ method: "POST" })
@@ -528,6 +546,38 @@ export const removeBranding = createServerFn({ method: "POST" })
     const { services, creator } = await requireCreator();
     if (!creator) return { ok: false as const, error: "not_found" };
     const result = await services.media.remove(creator.id, data.kind);
+    return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
+  });
+
+// --- Product thumbnails ---------------------------------------------------
+
+// Multipart upload carrying the product id and the image. The bytes go to the
+// storage service, which decides where they live, so no client path is used.
+export const uploadProductThumbnail = createServerFn({ method: "POST" })
+  .validator((data: FormData) => data)
+  .handler(async ({ data }): Promise<{ ok: true; data: { productId: string } } | { ok: false; error: string }> => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false, error: "not_found" };
+
+    const productId = String(data.get("productId") ?? "");
+    const file = data.get("file");
+    if (!(file instanceof File)) return { ok: false, error: "invalid_input" };
+
+    const result = await services.thumbnails.upload({
+      creatorId: creator.id,
+      productId,
+      contentType: file.type || "application/octet-stream",
+      data: new Uint8Array(await file.arrayBuffer()),
+    });
+    return result.ok ? { ok: true, data: result.value } : { ok: false, error: result.error };
+  });
+
+export const removeProductThumbnail = createServerFn({ method: "POST" })
+  .validator(z.object({ productId: z.uuid() }))
+  .handler(async ({ data }) => {
+    const { services, creator } = await requireCreator();
+    if (!creator) return { ok: false as const, error: "not_found" };
+    const result = await services.thumbnails.remove(creator.id, data.productId);
     return result.ok ? { ok: true as const, data: result.value } : { ok: false as const, error: result.error };
   });
 

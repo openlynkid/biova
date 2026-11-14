@@ -79,6 +79,11 @@ export const products = pgTable("products", {
   priceIdr: integer("price_idr").notNull(),
   status: productStatus("status").notNull().default("draft"),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Optional public thumbnail. Both columns are null together: a product either
+  // has an image (key + type) or none. `thumbnail_key` is server-generated and
+  // never exposed through the API; the read model is a versioned URL instead.
+  thumbnailKey: varchar("thumbnail_key", { length: 200 }),
+  thumbnailContentType: varchar("thumbnail_content_type", { length: 128 }),
   ...timestamps(),
 }, (table) => [
   uniqueIndex("products_creator_slug_uq").on(table.creatorId, table.slug),

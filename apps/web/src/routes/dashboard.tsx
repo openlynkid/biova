@@ -19,6 +19,7 @@ import {
   reorderLinks,
   reorderProducts,
   removeBranding,
+  removeProductThumbnail,
   setPageStatus,
   setPluginEnabled,
   setPluginPermission,
@@ -32,6 +33,7 @@ import {
   updateProfile,
   uploadBranding,
   uploadProductAsset,
+  uploadProductThumbnail,
   type AnalyticsDetail,
   type BlockView,
   type PluginPanelView,
@@ -416,7 +418,7 @@ function LinksEditor({ links, onError }: { links: LinkRow[]; onError: (message: 
   );
 }
 
-type ProductRow = { id: string; slug: string; title: string; description: string | null; priceIdr: number; status: string };
+type ProductRow = { id: string; slug: string; title: string; description: string | null; priceIdr: number; status: string; thumbnailUrl: string | null };
 
 function ProductsEditor({ products, onError }: { products: ProductRow[]; onError: (message: string | null) => void }) {
   const router = useRouter();
@@ -742,7 +744,10 @@ function ProductRowItem({
   const [title, setTitle] = useState(product.title);
   const [price, setPrice] = useState(String(product.priceIdr));
   const [assets, setAssets] = useState<AssetView[] | null>(null);
+  const [showThumb, setShowThumb] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [thumbBusy, setThumbBusy] = useState(false);
+  const router = useRouter();
   const published = product.status === "published";
 
   async function loadAssets() {
@@ -778,9 +783,31 @@ function ProductRowItem({
     await loadAssets();
   }
 
+  async function uploadThumbnail(file: File) {
+    setThumbBusy(true);
+    try {
+      const form = new FormData();
+      form.set("productId", product.id);
+      form.set("file", file);
+      const result = await uploadProductThumbnail({ data: form });
+      if (!result.ok) onError(result.error);
+      await router.invalidate();
+    } finally {
+      setThumbBusy(false);
+    }
+  }
+
+  async function removeThumbnail() {
+    await run(async () => removeProductThumbnail({ data: { productId: product.id } }));
+  }
+
   return (
     <li className={published ? "row" : "row disabled"}>
-      <span className="row-icon">◫</span>
+      {product.thumbnailUrl ? (
+        <img className="row-thumb" src={product.thumbnailUrl} alt={`${product.title} thumbnail`} />
+      ) : (
+        <span className="row-icon">◫</span>
+      )}
       <div className="row-body">
         {editing ? (
           <form
@@ -807,11 +834,47 @@ function ProductRowItem({
         <button type="button" className="chip" onClick={() => void onMove(index, 1)} disabled={last} aria-label="Move down">↓</button>
         <button type="button" className="chip" onClick={() => setEditing(!editing)}>{editing ? "Close" : "Edit"}</button>
         <button type="button" className="chip" onClick={() => void toggleAssets()}>{assets ? "Close files" : "Files"}</button>
+        <button type="button" className="chip" onClick={() => setShowThumb((value) => !value)}>{showThumb ? "Close image" : "Image"}</button>
         <button type="button" className="chip" onClick={() => void run(async () => setProductStatus({ data: { productId: product.id, status: published ? "draft" : "published" } }))}>
           {published ? "Unpublish" : "Publish"}
         </button>
         <button type="button" className="chip danger" onClick={() => void run(async () => deleteProduct({ data: { productId: product.id } }))}>Delete</button>
       </div>
+      {showThumb ? (
+        <div className="asset-panel">
+          <p className="intro">Product image shown on your public page and at checkout. Images are public.</p>
+          <div className="thumb-editor">
+            <div className="branding-preview">
+              {product.thumbnailUrl ? (
+                <img src={product.thumbnailUrl} alt={`${product.title} thumbnail preview`} />
+              ) : (
+                <span className="branding-empty">◫</span>
+              )}
+            </div>
+            <div className="row-actions">
+              <label className="chip as-label">
+                {thumbBusy ? "Uploading…" : product.thumbnailUrl ? "Replace" : "Upload"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
+                  hidden
+                  disabled={thumbBusy}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void uploadThumbnail(file);
+                  }}
+                />
+              </label>
+              {product.thumbnailUrl ? (
+                <button type="button" className="chip danger" onClick={() => void removeThumbnail()} disabled={thumbBusy}>
+                  Remove
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
       {assets ? (
         <div className="asset-panel">
           <p className="intro">Files delivered to buyers after payment. They are never exposed on the public page.</p>

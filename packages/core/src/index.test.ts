@@ -55,7 +55,7 @@ describe("public page read model", () => {
 
     const page = await getPublicPage(services, "coreuser");
     expect(page?.products).toEqual([
-      { id: live.value.id, slug: "core-live", title: "Live", description: null, priceIdr: 25_000 },
+      { id: live.value.id, slug: "core-live", title: "Live", description: null, priceIdr: 25_000, thumbnailUrl: null },
     ]);
   });
 });

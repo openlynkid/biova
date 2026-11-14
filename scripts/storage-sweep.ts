@@ -8,7 +8,7 @@
 // Dry-run is the default on purpose: a destructive reconciliation should be
 // asked for, not assumed.
 import { closeDatabase, db } from "@biova/database";
-import { createAssetRepository } from "@biova/products";
+import { createAssetRepository, createThumbnailRepository } from "@biova/products";
 import { createMediaRepository } from "@biova/media";
 import { createBlobStorage, resolveStorageRoot } from "@biova/core";
 import { sweepOrphans } from "@biova/storage";
@@ -22,10 +22,11 @@ async function main() {
   }
 
   const root = resolveStorageRoot(readEnv("STORAGE_DIR") ?? ".storage");
-  // Every key any row still references: product assets and creator branding.
-  // A blob is only an orphan when nothing at all owns it.
+  // Every key any row still references: product assets, product thumbnails and
+  // creator branding. A blob is only an orphan when nothing at all owns it.
   const referenced = [
     ...(await createAssetRepository(db).listStorageKeys()),
+    ...(await createThumbnailRepository(db).listStorageKeys()),
     ...(await createMediaRepository(db).listStorageKeys()),
   ];
   const result = await sweepOrphans(createBlobStorage(), referenced, {
